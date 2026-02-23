@@ -160,6 +160,6 @@ jobs:
             # STEP 7 — Print container status
             # ─────────────────────────────────────────────────
             echo "Container status:"
-            sudo docker compose ps
+            sudo -E docker compose ps
 
             echo "Deployment completed successfully!"
