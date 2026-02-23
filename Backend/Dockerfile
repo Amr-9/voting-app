@@ -29,6 +29,6 @@ COPY --from=builder /app/votingsystem .
 # Create the uploads directory (Docker Compose will mount a volume here)
 RUN mkdir -p uploads
 
-EXPOSE 8080
+EXPOSE 8071
 
 CMD ["./votingsystem"]

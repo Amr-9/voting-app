@@ -54,7 +54,7 @@ func Load() *Config {
 	rateLimitMax, _ := strconv.Atoi(getEnv("RATE_LIMIT_MAX", "5"))
 
 	return &Config{
-		AppPort:              getEnv("APP_PORT", "8080"),
+		AppPort:              getEnv("APP_PORT", "8071"),
 		DBDSN:                getEnv("DB_DSN", "root:@tcp(localhost:3306)/voting_db?parseTime=true"),
 		RedisAddr:            getEnv("REDIS_ADDR", "localhost:6379"),
 		RedisPassword:        getEnv("REDIS_PASSWORD", ""),
