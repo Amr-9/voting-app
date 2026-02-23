@@ -55,7 +55,7 @@ export default function CandidateCard({ candidate, rank, onVote }: Props) {
       </div>
 
       {/* Body */}
-      <div className="flex flex-col flex-1 p-7 pt-6 z-20">
+      <div className="flex flex-col flex-1 px-5 pb-5 pt-3 z-20">
         <div className="flex-1">
           <h3 className="font-black text-2xl tracking-tight leading-tight text-slate-900 dark:text-slate-50 mb-2">
             {candidate.name}
