@@ -7,14 +7,16 @@ services:
       - "8071:8071"
     env_file:
       - .env
+    environment:
+      APP_PORT: "8071"   # Explicitly override to ensure the app always listens on 8071
     depends_on:
       mariadb:
         condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
-      # Persist uploaded candidate images across container restarts
       - uploads_data:/app/uploads
+      - ./.env:/app/.env:ro   # Mount .env into container (read-only)
     networks:
       - voting_net
       - docker-app_app_network
