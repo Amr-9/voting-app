@@ -11,7 +11,7 @@ RUN go mod download
 COPY . .
 
 # Build a statically linked binary
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o votingsystem ./cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o votingsystem ./cmd/server/main.go
 
 # --- Stage 2: Final image ---
 FROM alpine:3.20
