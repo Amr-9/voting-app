@@ -46,11 +46,13 @@ func main() {
 	adminRepo := repository.NewAdminRepository(db)
 	candidateRepo := repository.NewCandidateRepository(db)
 	voteRepo := repository.NewVoteRepository(db)
+	votingSettingsRepo := repository.NewVotingSettingsRepository(db)
 
 	// Build service layer
 	captchaSvc := service.NewCaptchaService(cfg.TurnstileSecret)
 	rateLimitSvc := service.NewRateLimitService(redisClient, cfg.RateLimitMax)
 	adminSvc := service.NewAdminService(adminRepo, cfg.JWTSecret)
+	votingSettingsSvc := service.NewVotingSettingsService(votingSettingsRepo, redisClient)
 	otpSvc := service.NewOTPService(
 		redisClient,
 		cfg.SMTPHost, cfg.SMTPPort,
@@ -66,7 +68,8 @@ func main() {
 	// Build handler layer
 	adminHandler := handler.NewAdminHandler(adminSvc, candidateRepo, "./uploads")
 	candidateHandler := handler.NewCandidateHandler(candidateRepo)
-	voteHandler := handler.NewVoteHandler(otpSvc, voteSvc, captchaSvc)
+	voteHandler := handler.NewVoteHandler(otpSvc, voteSvc, captchaSvc, votingSettingsSvc)
+	votingSettingsHandler := handler.NewVotingSettingsHandler(votingSettingsSvc)
 
 	// Ensure uploads directory exists
 	if err := os.MkdirAll("./uploads", 0755); err != nil {
@@ -75,7 +78,7 @@ func main() {
 	}
 
 	// Assemble the Gin router
-	engine := router.Setup(hub, adminHandler, candidateHandler, voteHandler, cfg.JWTSecret, rateLimitSvc, cfg.CORSAllowedOrigins)
+	engine := router.Setup(hub, adminHandler, candidateHandler, voteHandler, votingSettingsHandler, cfg.JWTSecret, rateLimitSvc, cfg.CORSAllowedOrigins)
 
 	// Configure the HTTP server with timeouts
 	srv := &http.Server{

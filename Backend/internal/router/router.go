@@ -18,6 +18,7 @@ func Setup(
 	adminHandler *handler.AdminHandler,
 	candidateHandler *handler.CandidateHandler,
 	voteHandler *handler.VoteHandler,
+	votingSettingsHandler *handler.VotingSettingsHandler,
 	jwtSecret string,
 	rateLimitSvc *service.RateLimitService,
 	allowedOrigins string,
@@ -54,6 +55,9 @@ func Setup(
 		// Public: candidate listing
 		api.GET("/candidates", candidateHandler.GetCandidates)
 
+		// Public: current voting status (open/closed + ends_at)
+		api.GET("/voting-status", votingSettingsHandler.GetVotingStatus)
+
 		// Admin login is public (it issues the token)
 		api.POST("/admin/login", adminHandler.Login)
 
@@ -63,6 +67,7 @@ func Setup(
 		{
 			admin.POST("/candidates", adminHandler.AddCandidate)
 			admin.PUT("/candidates/:id", adminHandler.UpdateCandidate)
+			admin.PUT("/voting-settings", votingSettingsHandler.UpdateVotingSettings)
 		}
 	}
 

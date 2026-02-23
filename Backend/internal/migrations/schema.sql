@@ -31,3 +31,13 @@ CREATE TABLE IF NOT EXISTS votes (
 
 -- Index to speed up vote count aggregation per candidate
 CREATE INDEX IF NOT EXISTS idx_candidate_id ON votes(candidate_id);
+
+-- Voting control: singleton row for global on/off switch and optional auto-stop time (UTC)
+CREATE TABLE IF NOT EXISTS voting_settings (
+    id      INT PRIMARY KEY DEFAULT 1,
+    is_open TINYINT(1) NOT NULL DEFAULT 1,
+    ends_at DATETIME NULL DEFAULT NULL
+);
+
+-- Ensure the singleton row exists on every migration run
+INSERT IGNORE INTO voting_settings (id, is_open, ends_at) VALUES (1, 1, NULL);

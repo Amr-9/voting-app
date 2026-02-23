@@ -14,14 +14,16 @@ type VoteHandler struct {
 	otpService     *service.OTPService
 	voteService    *service.VoteService
 	captchaService *service.CaptchaService
+	votingSettings *service.VotingSettingsService
 }
 
 // NewVoteHandler creates a new VoteHandler.
-func NewVoteHandler(otp *service.OTPService, vote *service.VoteService, captcha *service.CaptchaService) *VoteHandler {
+func NewVoteHandler(otp *service.OTPService, vote *service.VoteService, captcha *service.CaptchaService, settings *service.VotingSettingsService) *VoteHandler {
 	return &VoteHandler{
 		otpService:     otp,
 		voteService:    vote,
 		captchaService: captcha,
+		votingSettings: settings,
 	}
 }
 
@@ -35,6 +37,18 @@ type RequestOTPRequest struct {
 
 // RequestOTP validates the captcha, enforces rate limiting, then generates and emails the OTP.
 func (h *VoteHandler) RequestOTP(c *gin.Context) {
+	// Guard: reject if voting is closed or auto-stop time has passed
+	open, err := h.votingSettings.IsVotingOpen(c.Request.Context())
+	if err != nil {
+		slog.Error("Failed to check voting status", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not verify voting status"})
+		return
+	}
+	if !open {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Voting is currently closed"})
+		return
+	}
+
 	var req RequestOTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
@@ -76,6 +90,18 @@ type VerifyVoteRequest struct {
 // VerifyVote confirms the OTP and records the vote in the database.
 // On success, the updated leaderboard is automatically broadcasted via WebSocket.
 func (h *VoteHandler) VerifyVote(c *gin.Context) {
+	// Guard: reject if voting closed between OTP request and verification
+	open, err := h.votingSettings.IsVotingOpen(c.Request.Context())
+	if err != nil {
+		slog.Error("Failed to check voting status", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not verify voting status"})
+		return
+	}
+	if !open {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Voting is currently closed"})
+		return
+	}
+
 	var req VerifyVoteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})

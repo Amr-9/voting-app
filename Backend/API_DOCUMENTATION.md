@@ -11,11 +11,13 @@
 1. [General Information](#general-information)
 2. [Public Endpoints](#public-endpoints)
    - [GET /api/candidates](#get-apicandidates)
+   - [GET /api/voting-status](#get-apivoting-status)
    - [POST /api/vote/request-otp](#post-apivoterequest-otp)
    - [POST /api/vote/verify](#post-apivoteverify)
 3. [Admin Endpoints](#admin-endpoints)
    - [POST /api/admin/login](#post-apiadminlogin)
    - [POST /api/admin/candidates](#post-apiadmincandidates)
+   - [PUT /api/admin/voting-settings](#put-apiadminvoting-settings)
 4. [Real-Time & System Endpoints](#real-time--system-endpoints)
    - [GET /ws](#get-ws)
    - [GET /health](#get-health)
@@ -99,6 +101,42 @@ Retrieves all candidates with their live vote counts, ordered by highest votes f
 
 ---
 
+### GET /api/voting-status
+
+Returns the current voting status — whether voting is open or closed, and the optional auto-stop time.
+
+> **Authentication**: Public — no token required.
+
+#### Request
+`GET /api/voting-status`
+
+#### Success Response `200 OK`
+```json
+{
+  "message": "success",
+  "data": {
+    "is_open": true,
+    "effectively_open": true,
+    "ends_at": "2025-12-31T18:00:00Z"
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `is_open` | boolean | Admin-set toggle: `true` = open, `false` = closed |
+| `effectively_open` | boolean | `true` only if `is_open=true` AND `ends_at` has not passed yet |
+| `ends_at` | string (RFC 3339 UTC) \| `null` | Auto-stop datetime in UTC, or `null` if no auto-stop is set |
+
+> **Important**: Always use `effectively_open` (not `is_open`) on the frontend to determine whether to allow voting. `effectively_open` correctly accounts for the `ends_at` deadline.
+
+#### Error Responses
+| Status Code | Description |
+|-------------|-------------|
+| `500` | Failed to fetch voting status |
+
+---
+
 ### POST /api/vote/request-otp
 
 Initiates the voting process by sending a 6-digit OTP to the user's email. Requires a Cloudflare Turnstile captcha token.
@@ -135,6 +173,7 @@ Initiates the voting process by sending a 6-digit OTP to the user's email. Requi
 |-------------|---------------|-------------|
 | `400` | `Invalid request body` | Missing or invalid fields |
 | `403` | `Captcha verification failed` | Turnstile token is invalid or expired |
+| `403` | `Voting is currently closed` | Voting has been disabled by an admin or `ends_at` has passed |
 | `429` | *(set by rate limiter middleware)* | Too many OTP requests from this IP |
 | `500` | `Captcha verification error` | Internal error contacting Cloudflare |
 | `500` | `Failed to send OTP — please try again` | Redis storage or email sending failed |
@@ -174,6 +213,7 @@ Verifies the OTP and records the vote in the database. On success, the updated l
 | Status Code | Error Message | Description |
 |-------------|---------------|-------------|
 | `400` | `Invalid request body` | Missing or invalid fields (e.g. OTP not 6 digits) |
+| `403` | `Voting is currently closed` | Voting was closed between OTP request and verification |
 | `409` | `You have already voted` | This email has already cast a vote |
 | `422` | `Invalid or expired OTP` | OTP is wrong, tampered, or older than 5 minutes |
 | `500` | `Failed to record vote` | Unexpected database error |
@@ -254,6 +294,53 @@ Content-Type: multipart/form-data
 | `401` | `Unauthorized` | JWT token is missing, invalid, or expired |
 | `500` | `Failed to save image` | Could not write the uploaded image to disk |
 | `500` | `Failed to add candidate` | Database insertion failed |
+
+---
+
+### PUT /api/admin/voting-settings
+
+Allows an admin to toggle voting on/off and optionally set an auto-stop datetime (UTC).
+
+#### Headers
+```
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+```
+
+#### Request Body
+```json
+{
+  "is_open": true,
+  "ends_at": "2025-12-31T18:00:00Z"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `is_open` | boolean | ✅ | `true` to open voting, `false` to close it immediately |
+| `ends_at` | string (RFC 3339 UTC) \| `null` | ❌ | Auto-stop datetime in UTC. Omit or send `null` to disable auto-stop |
+
+> **UTC timezone**: All datetime values must be sent and are stored in **UTC**. The frontend is responsible for converting to/from the user's local timezone.
+
+> **Auto-stop behavior**: If `is_open=true` and `ends_at` is set, voting automatically closes once `ends_at` passes — no job or cron is needed. The check happens on every vote request using the Redis-cached settings.
+
+#### Success Response `200 OK`
+```json
+{
+  "message": "success",
+  "data": {
+    "detail": "Voting settings updated successfully"
+  }
+}
+```
+
+#### Error Responses
+| Status Code | Error Message | Description |
+|-------------|---------------|-------------|
+| `400` | `Invalid request body` | Malformed JSON |
+| `400` | `ends_at must be a valid RFC 3339 UTC timestamp` | Invalid datetime format |
+| `401` | `Unauthorized` | JWT token is missing, invalid, or expired |
+| `500` | `Failed to update voting settings` | Database or Redis error |
 
 ---
 
