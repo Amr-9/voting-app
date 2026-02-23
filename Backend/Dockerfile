@@ -1,5 +1,10 @@
-# --- Stage 1: Build ---
+# ===============================
+# 🏗️ Build Stage
+# ===============================
 FROM golang:1.25-alpine AS builder
+
+# Install required tools
+RUN apk add --no-cache git ca-certificates
 
 WORKDIR /app
 
@@ -11,18 +16,20 @@ RUN go mod download
 COPY . .
 
 # Build a statically linked binary
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o votingsystem ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o server ./cmd/server
 
-# --- Stage 2: Final image ---
-FROM alpine:3.20
+# ===============================
+# 🚀 Production Stage
+# ===============================
+FROM alpine:latest
 
-# Install CA certificates for HTTPS (needed for SMTP and Cloudflare Turnstile calls)
+# Install CA certificates for HTTPS (SMTP, Cloudflare Turnstile) and timezone data
 RUN apk --no-cache add ca-certificates tzdata
 
 WORKDIR /app
 
 # Copy the compiled binary from the builder stage
-COPY --from=builder /app/votingsystem .
+COPY --from=builder /app/server .
 
 # Copy SQL migrations so the app can read schema.sql at startup
 COPY --from=builder /app/internal/migrations ./internal/migrations
@@ -32,4 +39,4 @@ RUN mkdir -p uploads
 
 EXPOSE 8071
 
-CMD ["./votingsystem"]
+CMD ["./server"]
