@@ -24,7 +24,8 @@ WORKDIR /app
 # Copy the compiled binary from the builder stage
 COPY --from=builder /app/votingsystem .
 
-# Copy SQL migrations (now inside internal/migrations — already included in COPY . .)
+# Copy SQL migrations so the app can read schema.sql at startup
+COPY --from=builder /app/internal/migrations ./internal/migrations
 
 # Create the uploads directory (Docker Compose will mount a volume here)
 RUN mkdir -p uploads
