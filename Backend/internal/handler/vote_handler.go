@@ -56,6 +56,12 @@ func (h *VoteHandler) RequestOTP(c *gin.Context) {
 		return
 	}
 
+	// Reject emails from domains that are not in the allowed list
+	if !isEmailDomainAllowed(req.Email) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Email domain is not supported. Please use a common email provider (e.g. gmail.com, outlook.com)."})
+		return
+	}
+
 	// Verify Cloudflare Turnstile token (server-to-server)
 	valid, err := h.captchaService.Verify(c.Request.Context(), req.CaptchaToken, c.ClientIP())
 	if err != nil {
