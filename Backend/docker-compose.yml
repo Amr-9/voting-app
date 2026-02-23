@@ -1,0 +1,60 @@
+services:
+  api:
+    build: .
+    container_name: voting_api
+    restart: always
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      # Persist uploaded candidate images across container restarts
+      - uploads_data:/app/uploads
+    networks:
+      - voting_net
+
+  mariadb:
+    image: mariadb:11.4
+    container_name: voting_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: voting_db
+      MYSQL_USER: voting_user
+      MYSQL_PASSWORD: voting_pass
+    volumes:
+      # Persist database data across container restarts
+      - mariadb_data:/var/lib/mysql
+    networks:
+      - voting_net
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: voting_redis
+    restart: always
+    networks:
+      - voting_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  mariadb_data:
+  uploads_data:
+
+networks:
+  voting_net:
+    driver: bridge

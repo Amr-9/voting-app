@@ -1,0 +1,34 @@
+# ─── Binaries ────────────────────────────────────────────
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+votingsystem
+
+# ─── Test & Coverage ─────────────────────────────────────
+*.test
+*.out
+coverage.html
+
+# ─── Go build cache ──────────────────────────────────────
+/vendor/
+
+# ─── Environment & Secrets ───────────────────────────────
+.env
+*.env
+!.env.example
+
+# ─── Uploads (user-generated content) ────────────────────
+/uploads/
+
+# ─── Docker ──────────────────────────────────────────────
+get-docker.sh
+
+# ─── IDE & OS ─────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

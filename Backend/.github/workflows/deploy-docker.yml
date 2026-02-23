@@ -1,0 +1,165 @@
+name: Build and Deploy - Real-Time Voting System
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+
+env:
+  REGISTRY: ghcr.io
+  # Automatically derived from the repository name (e.g. ghcr.io/owner/real-time-voting-system)
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # =========================================================
+  # Build the Docker image, push it to GHCR, then deploy
+  # =========================================================
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write   # Required to push to GitHub Container Registry
+
+    steps:
+      # ── 1. Checkout source code ──────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── 2. Authenticate with GitHub Container Registry ───
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 3. Enable Docker Buildx (multi-platform & cache) ─
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── 4. Generate image tags & OCI labels ──────────────
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-
+
+      # ── 5. Build & push the voting system image ───────────
+      #      Uses GitHub Actions cache to speed up subsequent builds.
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ── 6. Upload docker-compose.yml to the server ────────
+      - name: Copy docker-compose.yml to server
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST2 }}
+          username: ${{ secrets.SERVER_USER2 }}
+          key: ${{ secrets.SSH_PRIVATE_KEY2 }}
+          source: "docker-compose.yml"
+          target: "/home/${{ secrets.SERVER_USER2 }}/voting-app"
+
+      # ── 7. Provision Docker (if needed) & deploy ──────────
+      - name: Deploy to server
+        uses: appleboy/ssh-action@master
+        env:
+          GH_REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_URL: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          GH_USERNAME: ${{ github.actor }}
+          # GH_PAT is a Personal Access Token stored in GitHub Secrets.
+          # It must have the "read:packages" scope so the server can pull from GHCR.
+          GH_PAT: ${{ secrets.GH_PAT }}
+        with:
+          host: ${{ secrets.SERVER_HOST2 }}
+          username: ${{ secrets.SERVER_USER2 }}
+          key: ${{ secrets.SSH_PRIVATE_KEY2 }}
+          envs: GH_REGISTRY,IMAGE_URL,GH_USERNAME,GH_PAT
+          script: |
+            set -e  # Exit immediately on any error
+
+            # ─────────────────────────────────────────────────
+            # STEP 1 — Ensure Docker is installed
+            # ─────────────────────────────────────────────────
+            if ! command -v docker &> /dev/null; then
+              echo "Docker not found. Installing via official script..."
+              curl -fsSL https://get.docker.com -o get-docker.sh
+              sudo sh get-docker.sh
+              sudo usermod -aG docker "$USER"
+              echo "Docker installed successfully."
+            else
+              echo "Docker is already installed: $(docker --version)"
+            fi
+
+            # ─────────────────────────────────────────────────
+            # STEP 2 — Ensure Docker Compose plugin is available
+            # ─────────────────────────────────────────────────
+            if ! docker compose version &> /dev/null; then
+              echo "Docker Compose plugin not found. Installing..."
+              sudo apt-get update -qq && sudo apt-get install -y docker-compose-plugin
+            fi
+
+            # ─────────────────────────────────────────────────
+            # STEP 3 — Prepare deployment directory
+            # ─────────────────────────────────────────────────
+            APP_DIR="/home/${{ secrets.SERVER_USER2 }}/voting-app"
+            mkdir -p "$APP_DIR"
+            cd "$APP_DIR"
+
+            # Abort if the .env file is missing — the app cannot start without it.
+            # Create it once on the server: cp .env.example .env && nano .env
+            if [ ! -f ".env" ]; then
+              echo "ERROR: .env file not found in $APP_DIR"
+              echo "Please create the .env file on the server before deploying."
+              echo "Reference: .env.example in the repository."
+              exit 1
+            fi
+
+            # Docker requires image names to be lowercase
+            IMAGE_LOWER=$(echo "$IMAGE_URL" | tr '[:upper:]' '[:lower:]')
+
+            # ─────────────────────────────────────────────────
+            # STEP 4 — Pull the newly built image from GHCR
+            # ─────────────────────────────────────────────────
+            echo "Authenticating with GitHub Container Registry..."
+            echo "$GH_PAT" | sudo docker login "$GH_REGISTRY" -u "$GH_USERNAME" --password-stdin
+
+            echo "Pulling image: ${IMAGE_LOWER}:latest"
+            sudo docker pull "${IMAGE_LOWER}:latest"
+
+            # ─────────────────────────────────────────────────
+            # STEP 5 — Restart only the API container
+            #          (MariaDB & Redis keep their data intact)
+            # ─────────────────────────────────────────────────
+            export GHCR_IMAGE="$IMAGE_LOWER"
+
+            echo "Restarting the voting API container..."
+            sudo -E docker compose up -d --force-recreate api
+
+            # Ensure MariaDB and Redis are also running (no-op if already up)
+            sudo -E docker compose up -d --remove-orphans
+
+            # ─────────────────────────────────────────────────
+            # STEP 6 — Clean up dangling images
+            # ─────────────────────────────────────────────────
+            echo "Removing dangling images..."
+            sudo docker image prune -f
+
+            # ─────────────────────────────────────────────────
+            # STEP 7 — Print container status
+            # ─────────────────────────────────────────────────
+            echo "Container status:"
+            sudo docker compose ps
+
+            echo "Deployment completed successfully!"
