@@ -1,5 +1,5 @@
 # --- Stage 1: Build ---
-FROM golang:1.23-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ RUN go mod download
 COPY . .
 
 # Build a statically linked binary
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o votingsystem ./cmd/server/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o votingsystem ./cmd/server
 
 # --- Stage 2: Final image ---
 FROM alpine:3.20
