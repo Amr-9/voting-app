@@ -17,6 +17,7 @@ services:
       - uploads_data:/app/uploads
     networks:
       - voting_net
+      - docker-app_app_network
 
   mariadb:
     image: mariadb:11.4
@@ -32,6 +33,7 @@ services:
       - mariadb_data:/var/lib/mysql
     networks:
       - voting_net
+      - docker-app_app_network
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
@@ -45,6 +47,7 @@ services:
     restart: always
     networks:
       - voting_net
+      - docker-app_app_network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -58,3 +61,5 @@ volumes:
 networks:
   voting_net:
     driver: bridge
+  docker-app_app_network:
+    external: true   # Must already exist on the server (created by the other docker-compose project)
