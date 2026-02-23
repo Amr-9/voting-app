@@ -31,7 +31,7 @@ export default function CandidateCard({ candidate, rank, onVote }: Props) {
         }`}
     >
       {/* Image Container */}
-      <div className="relative w-full aspect-[4/3] bg-slate-100 dark:bg-slate-800/50 overflow-hidden">
+      <div className="relative w-full aspect-[4/3] bg-slate-100 dark:bg-slate-800/50 overflow-hidden rounded-t-[2rem]">
         {imageUrl ? (
           <>
             <img
