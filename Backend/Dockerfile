@@ -16,7 +16,7 @@ RUN go mod download
 COPY . .
 
 # Build a statically linked binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o server ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o votingsystem ./cmd/server
 
 # ===============================
 # 🚀 Production Stage
@@ -29,7 +29,7 @@ RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /app
 
 # Copy the compiled binary from the builder stage
-COPY --from=builder /app/server .
+COPY --from=builder /app/votingsystem .
 
 # Copy SQL migrations so the app can read schema.sql at startup
 COPY --from=builder /app/internal/migrations ./internal/migrations
@@ -39,4 +39,4 @@ RUN mkdir -p uploads
 
 EXPOSE 8071
 
-CMD ["./server"]
+CMD ["./votingsystem"]
