@@ -3,6 +3,7 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"votingsystem/internal/service"
 
@@ -69,6 +70,10 @@ func (h *VoteHandler) RequestOTP(c *gin.Context) {
 
 	// Generate OTP, store in Redis, and send to email
 	if err := h.otpService.GenerateAndStore(c.Request.Context(), req.Email, req.Fingerprint, req.CandidateID); err != nil {
+		if err.Error() == "email blocked due to too many failed OTP attempts" {
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "This email is temporarily blocked due to too many failed OTP attempts. Please try again later."})
+			return
+		}
 		slog.Error("Failed to generate/send OTP", "email", req.Email, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send OTP — please try again"})
 		return
@@ -110,16 +115,16 @@ func (h *VoteHandler) VerifyVote(c *gin.Context) {
 
 	if err := h.voteService.VerifyAndVote(c.Request.Context(), req.Email, req.OTP, req.CandidateID); err != nil {
 		errMsg := err.Error()
-		switch errMsg {
-		case "already voted":
+		switch {
+		case errMsg == "already voted":
 			c.JSON(http.StatusConflict, gin.H{"error": "You have already voted"})
+		case strings.Contains(errMsg, "email blocked"):
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "This email is temporarily blocked due to too many failed OTP attempts. Please request a new OTP after 30 minutes."})
+		case len(errMsg) > 3 && errMsg[:4] == "otp:":
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Invalid or expired OTP"})
 		default:
-			if len(errMsg) > 3 && errMsg[:4] == "otp:" {
-				c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Invalid or expired OTP"})
-			} else {
-				slog.Error("VerifyAndVote failed", "email", req.Email, "error", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record vote"})
-			}
+			slog.Error("VerifyAndVote failed", "email", req.Email, "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record vote"})
 		}
 		return
 	}
