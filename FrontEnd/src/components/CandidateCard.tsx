@@ -39,17 +39,12 @@ export default function CandidateCard({ candidate, rank, onVote }: Props) {
               alt={candidate.name}
               className="w-full h-full object-cover object-top transition-transform duration-700 ease-out group-hover:scale-105"
             />
-            {/* Subtle overlay to make it blend into the card naturally */}
-            <div className="absolute inset-0 bg-brand-900/10 dark:bg-slate-900/20 mix-blend-overlay pointer-events-none transition-opacity duration-500 group-hover:opacity-0" />
           </>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900">
             <User size={64} className="text-slate-300 dark:text-slate-700" />
           </div>
         )}
-
-        {/* Dynamic Inner Shadow Gradient at Bottom of image */}
-        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-white via-white/80 dark:from-slate-900 dark:via-slate-900/80 to-transparent pointer-events-none opacity-100 z-10" />
 
         {/* Rank Badge */}
         {rank <= 3 && candidate.total_votes > 0 && (
@@ -60,9 +55,9 @@ export default function CandidateCard({ candidate, rank, onVote }: Props) {
       </div>
 
       {/* Body */}
-      <div className="flex flex-col flex-1 p-7 z-20 -mt-16">
+      <div className="flex flex-col flex-1 p-7 pt-6 z-20">
         <div className="flex-1">
-          <h3 className="font-black text-2xl tracking-tight leading-tight text-slate-900 dark:text-slate-50 mb-2 group-hover:text-brand-500 transition-colors duration-300">
+          <h3 className="font-black text-2xl tracking-tight leading-tight text-slate-900 dark:text-slate-50 mb-2">
             {candidate.name}
           </h3>
           {candidate.description && (
