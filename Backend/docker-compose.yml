@@ -1,6 +1,6 @@
 services:
   api:
-    build: .
+    image: ${GHCR_IMAGE}   # Pre-built image pulled from GitHub Container Registry
     container_name: voting_api
     restart: always
     ports:
