@@ -1,0 +1,187 @@
+@import "tailwindcss";
+
+@variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  --color-brand-50: #ede9fe;
+  --color-brand-400: #a78bfa;
+  --color-brand-500: #7c5bf5;
+  --color-brand-600: #6a49e0;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 antialiased transition-colors duration-300;
+  }
+}
+
+/* =========================================================
+   PAGE TRANSITION & ANIMATIONS
+   ========================================================= */
+.page-enter {
+  animation: pageEnter 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* =========================================================
+   TOASTS
+   ========================================================= */
+.toast {
+  animation: toastIn 350ms cubic-bezier(0.2, 1, 0.3, 1);
+}
+
+.toast-success {
+  @apply border-l-[3px] border-emerald-500;
+}
+
+.toast-error {
+  @apply border-l-[3px] border-rose-500;
+}
+
+.toast-warning {
+  @apply border-l-[3px] border-amber-500;
+}
+
+.toast-info {
+  @apply border-l-[3px] border-blue-500;
+}
+
+/* =========================================================
+   SCROLLBAR
+   ========================================================= */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 dark:bg-slate-700/80 rounded-full transition-colors;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400 dark:bg-slate-600;
+}
+
+/* =========================================================
+   REACT DATEPICKER CUSTOMIZATION
+   ========================================================= */
+.react-datepicker-popper {
+  z-index: 60 !important;
+}
+
+.react-datepicker-wrapper {
+  @apply w-full;
+}
+
+.react-datepicker {
+  @apply bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl font-sans text-sm overflow-hidden;
+  border-width: 1px !important;
+}
+
+.react-datepicker__header {
+  @apply bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 pt-4 pb-2 rounded-t-2xl;
+  border-bottom-width: 1px !important;
+}
+
+.react-datepicker__current-month,
+.react-datepicker-time__header,
+.react-datepicker-year-header {
+  @apply text-slate-900 dark:text-slate-50 font-bold text-base bg-transparent;
+}
+
+.react-datepicker__day-name {
+  @apply text-slate-400 dark:text-slate-500 font-semibold text-xs uppercase tracking-wider w-8 h-8 leading-8 mt-2;
+}
+
+.react-datepicker__day {
+  @apply text-slate-700 dark:text-slate-300 w-8 h-8 leading-8 rounded-lg transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500/50;
+}
+
+.react-datepicker__day--selected,
+.react-datepicker__day--keyboard-selected {
+  @apply bg-brand-600 dark:bg-brand-500 text-white font-bold hover:bg-brand-500 dark:hover:bg-brand-400;
+  background-color: var(--color-brand-600) !important;
+  color: white !important;
+}
+
+.react-datepicker__day--today {
+  @apply font-black text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-500/10;
+}
+
+.react-datepicker__day--outside-month {
+  @apply text-slate-300 dark:text-slate-600;
+}
+
+.react-datepicker__triangle {
+  @apply hidden;
+}
+
+.react-datepicker__navigation {
+  @apply top-4;
+}
+
+.react-datepicker__navigation-icon::before {
+  @apply border-slate-400 dark:border-slate-500 transition-colors;
+}
+
+.react-datepicker__navigation:hover .react-datepicker__navigation-icon::before {
+  @apply border-slate-600 dark:border-slate-300;
+}
+
+/* Time styling */
+.react-datepicker__time-container {
+  @apply border-l border-slate-200 dark:border-slate-800 w-[120px] bg-white dark:bg-slate-900;
+}
+
+.react-datepicker-time__header {
+  @apply font-semibold text-sm;
+}
+
+.react-datepicker__time-container .react-datepicker__time .react-datepicker__time-box {
+  @apply w-full rounded-b-2xl;
+}
+
+.react-datepicker__time-container .react-datepicker__time .react-datepicker__time-box ul.react-datepicker__time-list {
+  overflow-y: auto;
+}
+
+.react-datepicker__time-container .react-datepicker__time .react-datepicker__time-box ul.react-datepicker__time-list li.react-datepicker__time-list-item {
+  @apply text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors py-2 m-1 rounded-lg;
+}
+
+.react-datepicker__time-container .react-datepicker__time .react-datepicker__time-box ul.react-datepicker__time-list li.react-datepicker__time-list-item--selected {
+  @apply bg-brand-600 dark:bg-brand-500 text-white font-bold hover:bg-brand-500 dark:hover:bg-brand-400;
+  background-color: var(--color-brand-600) !important;
+  color: white !important;
+}
