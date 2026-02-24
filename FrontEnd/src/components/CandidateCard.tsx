@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { User, CheckCircle2, CheckCheck } from 'lucide-react'
+import { User, CheckCircle2, CheckCheck, Trophy, Medal, Award, type LucideIcon } from 'lucide-react'
 import { getImageUrl } from '../utils/imageUrl.ts'
 import type { Candidate } from '../types/index.ts'
 
@@ -10,10 +10,10 @@ interface Props {
   votedCandidateId?: number | null
 }
 
-const RANK_CONFIG: Record<number, { label: string; bg: string }> = {
-  1: { label: '🥇', bg: 'bg-gradient-to-br from-amber-400 to-amber-600' },
-  2: { label: '🥈', bg: 'bg-gradient-to-br from-slate-300 to-slate-500' },
-  3: { label: '🥉', bg: 'bg-gradient-to-br from-orange-400 to-orange-700' },
+const RANK_CONFIG: Record<number, { icon: LucideIcon; bg: string; border: string }> = {
+  1: { icon: Trophy, bg: 'bg-gradient-to-br from-yellow-400 via-amber-500 to-orange-600', border: 'border-yellow-200/40 text-yellow-50' },
+  2: { icon: Medal, bg: 'bg-gradient-to-br from-slate-300 via-slate-400 to-slate-500', border: 'border-slate-100/50 text-slate-50' },
+  3: { icon: Award, bg: 'bg-gradient-to-br from-orange-400 via-rose-400 to-rose-600', border: 'border-orange-200/40 text-orange-50' },
 }
 
 export default function CandidateCard({ candidate, rank, onVote, votedCandidateId }: Props) {
@@ -50,11 +50,24 @@ export default function CandidateCard({ candidate, rank, onVote, votedCandidateI
         )}
 
         {/* Rank Badge */}
-        {rank <= 3 && candidate.total_votes > 0 && (
-          <div className={`absolute top-4 right-4 w-11 h-11 rounded-full flex items-center justify-center text-xl shadow-2xl backdrop-blur-md text-white border border-white/20 transform transition-transform group-hover:scale-110 group-hover:rotate-12 ${RANK_CONFIG[rank]?.bg}`}>
-            {RANK_CONFIG[rank]?.label}
-          </div>
-        )}
+        {rank <= 3 && candidate.total_votes > 0 && (() => {
+          const config = RANK_CONFIG[rank];
+          if (!config) return null;
+          const Icon = config.icon;
+          return (
+            <div className="absolute top-4 right-4 z-20 w-12 h-12 group/badge">
+              <div className={`absolute inset-0 rounded-full blur-md opacity-40 transition-opacity duration-300 group-hover/badge:opacity-70 ${config.bg}`} />
+              <div className={`
+                relative w-full h-full rounded-full flex items-center justify-center 
+                shadow-xl border-2 transform transition-all duration-500 ease-out
+                group-hover/badge:scale-110 group-hover/badge:-rotate-6
+                ${config.bg} ${config.border}
+              `}>
+                <Icon size={22} strokeWidth={2.5} className="drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]" />
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Body */}

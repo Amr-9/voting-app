@@ -2,10 +2,12 @@ import { useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { Sun, Moon, ShieldCheck, Vote } from 'lucide-react'
 import { getTheme, toggleTheme } from '../utils/theme.ts'
+import { useAdminAuth } from '../context/AdminAuthContext.tsx'
 import type { Theme } from '../utils/theme.ts'
 
 export default function Navbar() {
   const [theme, setTheme] = useState<Theme>(() => getTheme())
+  const { isAuthenticated } = useAdminAuth()
 
   const handleToggle = useCallback(() => {
     const next = toggleTheme()
@@ -40,7 +42,7 @@ export default function Navbar() {
           </button>
 
           <Link
-            to="/admin/login"
+            to={isAuthenticated ? '/admin/dashboard' : '/admin/login'}
             className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-50 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
           >
             <ShieldCheck size={16} />

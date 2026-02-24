@@ -16,6 +16,7 @@
    - [POST /api/vote/verify](#post-apivoteverify)
 3. [Admin Endpoints](#admin-endpoints)
    - [POST /api/admin/login](#post-apiadminlogin)
+   - [PUT /api/admin/change-password](#put-apiadminchange-password)
    - [POST /api/admin/candidates](#post-apiadmincandidates)
    - [PUT /api/admin/candidates/:id](#put-apiadmincandidatesid)
    - [DELETE /api/admin/candidates/:id](#delete-apiadmincandidatesid)
@@ -258,6 +259,52 @@ Authenticates an admin and returns a JWT token.
 |-------------|---------------|-------------|
 | `400` | `Invalid request body` | Missing or malformed fields |
 | `401` | `Invalid email or password` | Credentials do not match any admin account |
+
+---
+
+### PUT /api/admin/change-password
+
+Allows an authenticated admin to change their account password. Requires a valid Bearer token.
+
+> **Authentication**: Required — `Authorization: Bearer <jwt_token>`
+
+#### Headers
+```
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+```
+
+#### Request Body
+```json
+{
+  "old_password": "current_secure_password",
+  "new_password": "new_secure_password_10chars"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `old_password` | string | ✅ | The admin's current password |
+| `new_password` | string | ✅ | The desired new password (minimum 10 characters) |
+
+#### Success Response `200 OK`
+```json
+{
+  "message": "success",
+  "data": {
+    "detail": "Password changed successfully"
+  }
+}
+```
+
+#### Error Responses
+| Status Code | Error Message | Description |
+|-------------|---------------|-------------|
+| `400` | `Invalid request body` | Missing or malformed fields |
+| `400` | `New password must be at least 10 characters` | New password is too short |
+| `401` | `Unauthorized` | JWT token is missing, invalid, or expired |
+| `401` | `Current password is incorrect` | The supplied `old_password` does not match |
+| `500` | `Failed to change password` | Unexpected database error |
 
 ---
 

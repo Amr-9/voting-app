@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/alexedwards/argon2id"
 	"github.com/jmoiron/sqlx"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // RunMigrations executes schema.sql against the database to create all tables.
@@ -48,7 +48,7 @@ func SeedDefaultAdmin(db *sqlx.DB, email, password string) {
 		return
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := argon2id.CreateHash(password, argon2id.DefaultParams)
 	if err != nil {
 		slog.Error("Failed to hash default admin password", "error", err)
 		panic(err)
@@ -56,7 +56,7 @@ func SeedDefaultAdmin(db *sqlx.DB, email, password string) {
 
 	_, err = db.Exec(
 		"INSERT INTO admins (email, password_hash) VALUES (?, ?)",
-		email, string(hash),
+		email, hash,
 	)
 	if err != nil {
 		slog.Error("Failed to seed default admin", "error", err)

@@ -68,6 +68,7 @@ func Setup(
 		admin := api.Group("/admin")
 		admin.Use(middleware.JWTAuth(jwtSecret))
 		{
+			admin.PUT("/change-password", adminHandler.ChangePassword)
 			admin.POST("/candidates", adminHandler.AddCandidate)
 			admin.PUT("/candidates/:id", adminHandler.UpdateCandidate)
 			admin.DELETE("/candidates/:id", adminHandler.DeleteCandidate)

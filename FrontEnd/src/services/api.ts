@@ -111,6 +111,12 @@ export const adminAPI = {
       is_open: isOpen,
       ends_at: endsAt, // RFC 3339 UTC string or null
     }),
+
+  changePassword: (oldPassword: string, newPassword: string) =>
+    api.put('/api/admin/change-password', {
+      old_password: oldPassword,
+      new_password: newPassword,
+    }),
 }
 
 export default api

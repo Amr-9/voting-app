@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"path/filepath"
@@ -54,6 +55,52 @@ func (h *AdminHandler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "success",
 		"data":    gin.H{"token": token},
+	})
+}
+
+// ChangePasswordRequest is the expected JSON body for PUT /api/admin/change-password.
+type ChangePasswordRequest struct {
+	OldPassword string `json:"old_password" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required"`
+}
+
+// ChangePassword allows an authenticated admin to change their account password.
+// Protected by JWT middleware — requires a valid Bearer token.
+func (h *AdminHandler) ChangePassword(c *gin.Context) {
+	var req ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
+		return
+	}
+
+	// Extract admin ID injected by JWTAuth middleware (stored as float64 from JWT claims)
+	adminIDRaw, exists := c.Get("adminID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	adminID, err := strconv.Atoi(fmt.Sprintf("%v", adminIDRaw))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid admin session"})
+		return
+	}
+
+	if err := h.adminService.ChangePassword(adminID, req.OldPassword, req.NewPassword); err != nil {
+		switch {
+		case errors.Is(err, service.ErrIncorrectPassword):
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Current password is incorrect"})
+		case errors.Is(err, service.ErrWeakPassword):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "New password must be at least 8 characters"})
+		default:
+			slog.Error("ChangePassword failed", "adminID", adminID, "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to change password"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "success",
+		"data":    gin.H{"detail": "Password changed successfully"},
 	})
 }
 
