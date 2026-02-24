@@ -44,9 +44,14 @@ services:
       start_period: 30s
 
   redis:
-    image: redis:7.4-alpine
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
     container_name: voting_redis
     restart: always
+    command: ["--save_schedule", "*/1 * * * *", "--dir", "/data"]
+    ulimits:
+      memlock: -1
+    volumes:
+      - dragonfly_data:/data
     networks:
       - voting_net
       - docker-app_app_network
@@ -59,6 +64,7 @@ services:
 volumes:
   mariadb_data:
   uploads_data:
+  dragonfly_data:
 
 networks:
   voting_net:
