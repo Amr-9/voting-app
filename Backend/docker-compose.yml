@@ -44,7 +44,7 @@ services:
       start_period: 30s
 
   redis:
-    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+    image: ghcr.io/dragonflydb/dragonfly:latest
     container_name: voting_redis
     restart: always
     command: ["--save_schedule", "*/1 * * * *", "--dir", "/data"]
@@ -56,7 +56,7 @@ services:
       - voting_net
       - docker-app_app_network
     healthcheck:
-    test: ["CMD-SHELL", "nc -z localhost 6379 || exit 1"]
+      test: ["CMD-SHELL", "nc -z localhost 6379 || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 10
