@@ -25,9 +25,15 @@ CREATE TABLE IF NOT EXISTS votes (
     voter_email       VARCHAR(255) NOT NULL UNIQUE,
     voter_fingerprint VARCHAR(255) NOT NULL UNIQUE,
     candidate_id      INT NOT NULL,
+    voter_ip          VARCHAR(45)  NULL DEFAULT NULL,
+    voter_user_agent  VARCHAR(512) NULL DEFAULT NULL,
     created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE CASCADE
 );
+
+-- Migration: add voter_ip / voter_user_agent to existing deployments (safe to re-run)
+ALTER TABLE votes ADD COLUMN IF NOT EXISTS voter_ip         VARCHAR(45)  NULL DEFAULT NULL;
+ALTER TABLE votes ADD COLUMN IF NOT EXISTS voter_user_agent VARCHAR(512) NULL DEFAULT NULL;
 
 -- Index to speed up vote count aggregation per candidate
 CREATE INDEX IF NOT EXISTS idx_candidate_id ON votes(candidate_id);

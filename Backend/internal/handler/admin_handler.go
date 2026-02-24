@@ -154,3 +154,30 @@ func (h *AdminHandler) UpdateCandidate(c *gin.Context) {
 		"data":    gin.H{"detail": "Candidate updated successfully"},
 	})
 }
+
+// DeleteCandidate handles DELETE /api/admin/candidates/:id.
+// Rejects deletion if the candidate has any votes — preserving election data integrity.
+// Protected by JWT middleware.
+func (h *AdminHandler) DeleteCandidate(c *gin.Context) {
+	idParam := c.Param("id")
+	candidateID, err := strconv.Atoi(idParam)
+	if err != nil || candidateID < 1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid candidate ID"})
+		return
+	}
+
+	if err := h.candidateRepo.DeleteCandidate(candidateID); err != nil {
+		switch {
+		case errors.Is(err, repository.ErrCandidateHasVotes):
+			c.JSON(http.StatusConflict, gin.H{"error": "Cannot delete candidate: they already have votes"})
+		case errors.Is(err, repository.ErrCandidateNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "Candidate not found"})
+		default:
+			slog.Error("DeleteCandidate failed", "id", candidateID, "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete candidate"})
+		}
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}

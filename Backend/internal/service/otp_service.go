@@ -110,25 +110,26 @@ func (s *OTPService) GenerateAndStore(ctx context.Context, email, fingerprint st
 }
 
 // Verify retrieves the stored OTP from Redis and validates it against the provided values.
-// Returns the fingerprint from Redis so the vote service can use it without the client re-sending it.
+// Returns the fingerprint and candidateID from Redis — the client is NOT trusted to supply
+// candidateID at verify time; using the server-stored value closes the candidate-swap vulnerability.
 // After maxOTPAttempts failed attempts the OTP is deleted and the email is blocked.
-func (s *OTPService) Verify(ctx context.Context, email, otp string, candidateID int) (string, error) {
+func (s *OTPService) Verify(ctx context.Context, email, otp string) (fingerprint string, candidateID int, err error) {
 	// Check if the email is already blocked
-	blocked, err := s.IsEmailBlocked(ctx, email)
-	if err != nil {
-		slog.Error("Failed to check OTP block", "email", email, "error", err)
-		return "", fmt.Errorf("checking block status: %w", err)
+	blocked, checkErr := s.IsEmailBlocked(ctx, email)
+	if checkErr != nil {
+		slog.Error("Failed to check OTP block", "email", email, "error", checkErr)
+		return "", 0, fmt.Errorf("checking block status: %w", checkErr)
 	}
 	if blocked {
-		return "", errors.New("email blocked: too many failed OTP attempts")
+		return "", 0, errors.New("email blocked: too many failed OTP attempts")
 	}
 
-	stored, err := s.redis.Get(ctx, otpKey(email)).Result()
-	if errors.Is(err, redis.Nil) {
-		return "", errors.New("OTP expired or not found")
+	stored, redisErr := s.redis.Get(ctx, otpKey(email)).Result()
+	if errors.Is(redisErr, redis.Nil) {
+		return "", 0, errors.New("OTP expired or not found")
 	}
-	if err != nil {
-		return "", fmt.Errorf("fetching OTP from Redis: %w", err)
+	if redisErr != nil {
+		return "", 0, fmt.Errorf("fetching OTP from Redis: %w", redisErr)
 	}
 
 	// Helper: record a failed attempt and potentially block the email.
@@ -160,29 +161,30 @@ func (s *OTPService) Verify(ctx context.Context, email, otp string, candidateID 
 	parts := strings.SplitN(stored, ":", 3)
 	if len(parts) != 3 {
 		_ = recordFailure()
-		return "", errors.New("malformed OTP record")
+		return "", 0, errors.New("malformed OTP record")
 	}
 
-	storedOTP, storedCandidateID, storedFingerprint := parts[0], parts[1], parts[2]
+	storedOTP, storedCandidateIDStr, storedFingerprint := parts[0], parts[1], parts[2]
 
 	if storedOTP != otp {
 		if blockErr := recordFailure(); blockErr != nil {
-			return "", blockErr // email just got blocked
+			return "", 0, blockErr // email just got blocked
 		}
-		return "", errors.New("invalid OTP")
+		return "", 0, errors.New("invalid OTP")
 	}
-	if storedCandidateID != fmt.Sprintf("%d", candidateID) {
-		if blockErr := recordFailure(); blockErr != nil {
-			return "", blockErr
-		}
-		return "", errors.New("candidate ID mismatch")
+
+	// Parse the candidate ID stored in Redis (trusted server-side value)
+	var parsedCandidateID int
+	if _, parseErr := fmt.Sscanf(storedCandidateIDStr, "%d", &parsedCandidateID); parseErr != nil {
+		_ = recordFailure()
+		return "", 0, errors.New("malformed candidate ID in OTP record")
 	}
 
 	// OTP is correct — delete it and clear attempt counters
 	s.redis.Del(ctx, otpKey(email), otpAttemptsKey(email))
-	slog.Info("OTP verified and consumed", "email", email)
+	slog.Info("OTP verified and consumed", "email", email, "candidate_id", parsedCandidateID)
 
-	return storedFingerprint, nil
+	return storedFingerprint, parsedCandidateID, nil
 }
 
 // sendEmail delivers the OTP code to the voter using STARTTLS SMTP.

@@ -89,7 +89,7 @@ export default function VoteModal({ candidate, onClose }: Props) {
     setError(null)
 
     try {
-      await voteAPI.verify(email, otpStr, candidate.id)
+      await voteAPI.verify(email, otpStr)
       setDoneMessage('Your vote has been recorded! Thank you for participating.')
       setStep(STEP.DONE)
       toast.success('Vote recorded successfully!')
@@ -114,7 +114,7 @@ export default function VoteModal({ candidate, onClose }: Props) {
     } finally {
       setLoading(false)
     }
-  }, [email, otp, candidate.id, toast])
+  }, [email, otp, toast])
 
   // ---- OTP input handlers ----
   const handleOtpChange = useCallback((index: number, value: string) => {

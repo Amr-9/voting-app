@@ -68,11 +68,10 @@ export const voteAPI = {
       candidate_id: candidateId,
     }),
 
-  verify: (email: string, otp: string, candidateId: number) =>
+  verify: (email: string, otp: string) =>
     api.post('/api/vote/verify', {
       email,
       otp,
-      candidate_id: candidateId,
     }),
 }
 
@@ -103,6 +102,9 @@ export const adminAPI = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
+
+  deleteCandidate: (id: number) =>
+    api.delete(`/api/admin/candidates/${id}`),
 
   updateVotingSettings: (isOpen: boolean, endsAt: string | null) =>
     api.put('/api/admin/voting-settings', {

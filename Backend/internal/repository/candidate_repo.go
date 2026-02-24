@@ -12,6 +12,9 @@ import (
 // ErrCandidateNotFound is returned when an UPDATE/DELETE targets a non-existent candidate.
 var ErrCandidateNotFound = errors.New("candidate not found")
 
+// ErrCandidateHasVotes is returned when a DELETE is attempted on a candidate that already has votes.
+var ErrCandidateHasVotes = errors.New("candidate has votes and cannot be deleted")
+
 // CandidateRepository handles all database operations for candidates.
 type CandidateRepository struct {
 	db *sqlx.DB
@@ -98,5 +101,35 @@ func (r *CandidateRepository) UpdateCandidate(id int, name, description, imagePa
 	}
 
 	slog.Info("Candidate updated", "id", id, "name", name)
+	return nil
+}
+
+// DeleteCandidate removes a candidate only when they have zero votes.
+// Returns ErrCandidateHasVotes if any votes exist, ErrCandidateNotFound if the ID doesn't exist.
+func (r *CandidateRepository) DeleteCandidate(id int) error {
+	// Count votes for this candidate
+	var count int
+	if err := r.db.QueryRow(
+		"SELECT COUNT(*) FROM votes WHERE candidate_id = ?", id,
+	).Scan(&count); err != nil {
+		slog.Error("DeleteCandidate: vote count query failed", "id", id, "error", err)
+		return err
+	}
+	if count > 0 {
+		return ErrCandidateHasVotes
+	}
+
+	result, err := r.db.Exec("DELETE FROM candidates WHERE id = ?", id)
+	if err != nil {
+		slog.Error("DeleteCandidate: DELETE failed", "id", id, "error", err)
+		return err
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return ErrCandidateNotFound
+	}
+
+	slog.Info("Candidate deleted", "id", id)
 	return nil
 }

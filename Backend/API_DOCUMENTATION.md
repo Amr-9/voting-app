@@ -17,6 +17,8 @@
 3. [Admin Endpoints](#admin-endpoints)
    - [POST /api/admin/login](#post-apiadminlogin)
    - [POST /api/admin/candidates](#post-apiadmincandidates)
+   - [PUT /api/admin/candidates/:id](#put-apiadmincandidatesid)
+   - [DELETE /api/admin/candidates/:id](#delete-apiadmincandidatesid)
    - [PUT /api/admin/voting-settings](#put-apiadminvoting-settings)
 4. [Real-Time & System Endpoints](#real-time--system-endpoints)
    - [GET /ws](#get-ws)
@@ -188,8 +190,7 @@ Verifies the OTP and records the vote in the database. On success, the updated l
 ```json
 {
   "email": "voter@example.com",
-  "otp": "123456",
-  "candidate_id": 1
+  "otp": "123456"
 }
 ```
 
@@ -197,7 +198,8 @@ Verifies the OTP and records the vote in the database. On success, the updated l
 |-------|------|----------|-------------|
 | `email` | string | ✅ | Same email used in `request-otp` |
 | `otp` | string | ✅ | 6-digit code received via email (exactly 6 characters) |
-| `candidate_id` | integer | ✅ | ID of the candidate (min: 1) |
+
+> **Security note**: `candidate_id` is intentionally absent. The backend reads it from Redis (where it was locked in at OTP-request time) to prevent a candidate-swap attack.
 
 #### Success Response `200 OK`
 ```json
@@ -294,6 +296,78 @@ Content-Type: multipart/form-data
 | `401` | `Unauthorized` | JWT token is missing, invalid, or expired |
 | `500` | `Failed to save image` | Could not write the uploaded image to disk |
 | `500` | `Failed to add candidate` | Database insertion failed |
+
+---
+
+### PUT /api/admin/candidates/:id
+
+Updates an existing candidate's name, description, and/or image.
+
+#### Headers
+```
+Authorization: Bearer <jwt_token>
+Content-Type: multipart/form-data
+```
+
+#### URL Parameters
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | integer | Candidate ID |
+
+#### Form-Data Parameters
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `name` | string | ✅ | Candidate's full name |
+| `description` | string | ❌ | Candidate biography/platform |
+| `image` | File | ❌ | New image file — replaces the existing one if provided |
+
+#### Success Response `200 OK`
+```json
+{
+  "message": "success",
+  "data": {
+    "detail": "Candidate updated successfully"
+  }
+}
+```
+
+#### Error Responses
+| Status Code | Error Message | Description |
+|-------------|---------------|-------------|
+| `400` | `Invalid candidate ID` | ID parameter is not a valid integer ≥ 1 |
+| `400` | `name is required` | The `name` form field is missing or empty |
+| `401` | `Unauthorized` | JWT token is missing, invalid, or expired |
+| `404` | `Candidate not found` | No candidate with the given ID exists |
+| `500` | `Failed to save image` | Could not write the image to disk |
+| `500` | `Failed to update candidate` | Database update failed |
+
+---
+
+### DELETE /api/admin/candidates/:id
+
+Permanently deletes a candidate **only if they have zero votes**. This protects election data integrity — candidates who have already received votes cannot be removed.
+
+#### Headers
+```
+Authorization: Bearer <jwt_token>
+```
+
+#### URL Parameters
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | integer | Candidate ID |
+
+#### Success Response `204 No Content`
+No response body.
+
+#### Error Responses
+| Status Code | Error Message | Description |
+|-------------|---------------|-------------|
+| `400` | `Invalid candidate ID` | ID parameter is not a valid integer ≥ 1 |
+| `401` | `Unauthorized` | JWT token is missing, invalid, or expired |
+| `404` | `Candidate not found` | No candidate with the given ID exists |
+| `409` | `Cannot delete candidate: they already have votes` | The candidate has at least one vote and cannot be deleted |  
+| `500` | `Failed to delete candidate` | Unexpected database error |
 
 ---
 
@@ -403,4 +477,4 @@ Simple health check to monitor server status.
 
 ---
 
-*Last Updated: 2026-02-23*
+*Last Updated: 2026-02-24*

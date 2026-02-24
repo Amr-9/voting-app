@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Pencil, LogOut, Loader, Upload, X, ImageIcon, Users, ShieldCheck, ShieldOff, Clock } from 'lucide-react'
+import { Plus, Pencil, Trash2, LogOut, Loader, Upload, X, ImageIcon, Users, ShieldCheck, ShieldOff, Clock, AlertTriangle } from 'lucide-react'
 import { candidateAPI, adminAPI, votingAPI } from '../../services/api.ts'
 import { useAdminAuth } from '../../context/AdminAuthContext.tsx'
 import { useToast } from '../../context/ToastContext.tsx'
@@ -303,6 +303,8 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [formLoading, setFormLoading] = useState(false)
   const [editTarget, setEditTarget] = useState<Candidate | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Candidate | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   const fetchCandidates = useCallback(async () => {
     try {
@@ -361,6 +363,28 @@ export default function AdminDashboard() {
     logout()
     navigate('/admin/login', { replace: true })
   }, [logout, navigate])
+
+  const handleDelete = useCallback(async (candidate: Candidate) => {
+    setDeleteLoading(true)
+    try {
+      await adminAPI.deleteCandidate(candidate.id)
+      toast.success(`"${candidate.name}" deleted successfully.`)
+      setDeleteTarget(null)
+      await fetchCandidates()
+    } catch (err) {
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined
+      const message = axios.isAxiosError(err)
+        ? (err.response?.data as { error?: string })?.error ?? 'Failed to delete candidate.'
+        : 'Failed to delete candidate.'
+      if (status === 409) {
+        toast.error('Cannot delete: this candidate already has votes.')
+      } else {
+        toast.error(message)
+      }
+    } finally {
+      setDeleteLoading(false)
+    }
+  }, [fetchCandidates, toast])
 
   const totalVotes = candidates.reduce((sum, c) => sum + c.total_votes, 0)
 
@@ -578,14 +602,35 @@ export default function AdminDashboard() {
                           </div>
                         </div>
 
-                        {/* Edit button */}
-                        <button
-                          className="p-4 rounded-2xl bg-slate-50 hover:bg-brand-50 dark:bg-slate-950 dark:hover:bg-brand-500/10 text-slate-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors shadow-sm ring-1 ring-slate-200 dark:ring-slate-800 hover:ring-brand-500/30"
-                          onClick={() => setEditTarget(c)}
-                          aria-label={`Edit ${c.name}`}
-                        >
-                          <Pencil size={20} strokeWidth={2.5} />
-                        </button>
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          {/* Delete button */}
+                          {c.total_votes === 0 ? (
+                            <button
+                              className="p-4 rounded-2xl bg-slate-50 hover:bg-rose-50 dark:bg-slate-950 dark:hover:bg-rose-500/10 text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 transition-colors shadow-sm ring-1 ring-slate-200 dark:ring-slate-800 hover:ring-rose-500/30"
+                              onClick={() => setDeleteTarget(c)}
+                              aria-label={`Delete ${c.name}`}
+                            >
+                              <Trash2 size={20} strokeWidth={2.5} />
+                            </button>
+                          ) : (
+                            <button
+                              className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 text-slate-300 dark:text-slate-700 cursor-not-allowed shadow-sm ring-1 ring-slate-200 dark:ring-slate-800"
+                              title="Cannot delete: candidate has votes"
+                              disabled
+                            >
+                              <Trash2 size={20} strokeWidth={2.5} />
+                            </button>
+                          )}
+                          {/* Edit button */}
+                          <button
+                            className="p-4 rounded-2xl bg-slate-50 hover:bg-brand-50 dark:bg-slate-950 dark:hover:bg-brand-500/10 text-slate-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors shadow-sm ring-1 ring-slate-200 dark:ring-slate-800 hover:ring-brand-500/30"
+                            onClick={() => setEditTarget(c)}
+                            aria-label={`Edit ${c.name}`}
+                          >
+                            <Pencil size={20} strokeWidth={2.5} />
+                          </button>
+                        </div>
                       </li>
                     )
                   })}
@@ -639,6 +684,49 @@ export default function AdminDashboard() {
                 onCancel={() => setEditTarget(null)}
                 loading={formLoading}
               />
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-md">
+          <div className="fixed inset-0" onClick={() => !deleteLoading && setDeleteTarget(null)} />
+          <div className="relative w-full max-w-sm bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-[2rem] shadow-2xl border border-white/50 dark:border-slate-800/50 overflow-hidden animate-[modalScale_0.3s_cubic-bezier(0.34,1.4,0.64,1)]">
+            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-rose-500/30 to-transparent" />
+
+            <div className="flex flex-col items-center gap-5 p-8 text-center">
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center bg-rose-100 dark:bg-rose-500/10 text-rose-500">
+                <AlertTriangle size={32} strokeWidth={2.5} />
+              </div>
+              <div>
+                <h2 className="text-xl font-black text-slate-900 dark:text-slate-50 mb-2">Delete Candidate?</h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+                  You are about to permanently delete{' '}
+                  <strong className="text-slate-800 dark:text-slate-200">{deleteTarget.name}</strong>.
+                  This action cannot be undone.
+                </p>
+              </div>
+              <div className="flex gap-3 w-full">
+                <button
+                  type="button"
+                  className="flex-1 py-3 rounded-xl font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={deleteLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="flex-1 py-3 rounded-xl font-bold bg-rose-500 hover:bg-rose-600 text-white shadow-md transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  onClick={() => handleDelete(deleteTarget)}
+                  disabled={deleteLoading}
+                >
+                  {deleteLoading ? <><Loader size={16} className="animate-spin" /> Deleting...</> : 'Delete'}
+                </button>
+              </div>
             </div>
           </div>
         </div>,

@@ -37,20 +37,21 @@ func NewVoteService(
 // VerifyAndVote validates the OTP, records the vote, and broadcasts updated results.
 //
 // Flow:
-//  1. Verify OTP in Redis — retrieves the stored fingerprint to avoid re-sending it
-//  2. Insert vote into MariaDB — DB UNIQUE constraint rejects duplicates automatically
+//  1. Verify OTP in Redis — reads candidateID and fingerprint from the server-stored value;
+//     the client is NOT trusted to supply candidateID at this stage (prevents candidate-swap attack)
+//  2. Insert vote into MariaDB — DB enforces uniqueness; voter IP + User-Agent are stored for audit
 //  3. Fetch fresh leaderboard via LEFT JOIN + COUNT
 //  4. Broadcast JSON array to all connected WebSocket clients via Hub
-func (s *VoteService) VerifyAndVote(ctx context.Context, email, otp string, candidateID int) error {
-	// Step 1: verify the OTP and retrieve the fingerprint stored during OTP request
-	fingerprint, err := s.otpService.Verify(ctx, email, otp, candidateID)
+func (s *VoteService) VerifyAndVote(ctx context.Context, email, otp, ip, userAgent string) error {
+	// Step 1: verify the OTP; candidateID is read from Redis, not from the client
+	fingerprint, candidateID, err := s.otpService.Verify(ctx, email, otp)
 	if err != nil {
 		slog.Warn("OTP verification failed", "email", email, "error", err)
 		return fmt.Errorf("otp: %w", err)
 	}
 
 	// Step 2: insert the vote — DB enforces uniqueness on voter_email and voter_fingerprint
-	if err := s.voteRepo.InsertVote(email, fingerprint, candidateID); err != nil {
+	if err := s.voteRepo.InsertVote(email, fingerprint, candidateID, ip, userAgent); err != nil {
 		// MariaDB returns error 1062 on UNIQUE constraint violation
 		if strings.Contains(err.Error(), "1062") || strings.Contains(err.Error(), "Duplicate") {
 			return fmt.Errorf("already voted")

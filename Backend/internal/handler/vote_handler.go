@@ -92,10 +92,11 @@ func (h *VoteHandler) RequestOTP(c *gin.Context) {
 }
 
 // VerifyVoteRequest is the expected JSON body for POST /api/vote/verify.
+// candidate_id is intentionally absent: it is read from Redis on the server side
+// to prevent a candidate-swap attack (requesting OTP for candidate A then voting for candidate B).
 type VerifyVoteRequest struct {
-	Email       string `json:"email"        binding:"required,email"`
-	OTP         string `json:"otp"          binding:"required,len=6"`
-	CandidateID int    `json:"candidate_id" binding:"required,min=1"`
+	Email string `json:"email" binding:"required,email"`
+	OTP   string `json:"otp"   binding:"required,len=6"`
 }
 
 // VerifyVote confirms the OTP and records the vote in the database.
@@ -119,7 +120,7 @@ func (h *VoteHandler) VerifyVote(c *gin.Context) {
 		return
 	}
 
-	if err := h.voteService.VerifyAndVote(c.Request.Context(), req.Email, req.OTP, req.CandidateID); err != nil {
+	if err := h.voteService.VerifyAndVote(c.Request.Context(), req.Email, req.OTP, c.ClientIP(), c.Request.UserAgent()); err != nil {
 		errMsg := err.Error()
 		switch {
 		case errMsg == "already voted":

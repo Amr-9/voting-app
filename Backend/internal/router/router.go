@@ -67,6 +67,7 @@ func Setup(
 		{
 			admin.POST("/candidates", adminHandler.AddCandidate)
 			admin.PUT("/candidates/:id", adminHandler.UpdateCandidate)
+			admin.DELETE("/candidates/:id", adminHandler.DeleteCandidate)
 			admin.PUT("/voting-settings", votingSettingsHandler.UpdateVotingSettings)
 		}
 	}
