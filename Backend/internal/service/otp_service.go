@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
-	"net/smtp"
 	"strings"
 	"time"
+
+	"votingsystem/internal/email"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -23,25 +24,17 @@ const (
 	otpTTL = 5 * time.Minute
 )
 
-// OTPService generates, stores, and emails OTP codes.
+// OTPService generates, stores, and queues OTP emails.
 type OTPService struct {
 	redis    *redis.Client
-	smtpHost string
-	smtpPort int
-	smtpUser string
-	smtpPass string
-	smtpFrom string
+	emailSvc *email.Service
 }
 
 // NewOTPService creates a new OTPService.
-func NewOTPService(redis *redis.Client, host string, port int, user, pass, from string) *OTPService {
+func NewOTPService(redis *redis.Client, emailSvc *email.Service) *OTPService {
 	return &OTPService{
 		redis:    redis,
-		smtpHost: host,
-		smtpPort: port,
-		smtpUser: user,
-		smtpPass: pass,
-		smtpFrom: from,
+		emailSvc: emailSvc,
 	}
 }
 
@@ -70,10 +63,10 @@ func (s *OTPService) IsEmailBlocked(ctx context.Context, email string) (bool, er
 }
 
 // GenerateAndStore creates a 6-digit OTP, stores it in Redis for 5 minutes,
-// and sends it to the voter's email address.
+// and queues an email to the voter via the async email worker.
 // The Redis value encodes: "{otp}:{candidateID}:{fingerprint}" so that VerifyVote
 // can confirm all three match — preventing OTP reuse across different candidates or devices.
-func (s *OTPService) GenerateAndStore(ctx context.Context, email, fingerprint string, candidateID int) error {
+func (s *OTPService) GenerateAndStore(ctx context.Context, voterEmail, fingerprint string, candidateID int) error {
 	// Generate a cryptographically secure 6-digit code
 	n, err := rand.Int(rand.Reader, big.NewInt(900000))
 	if err != nil {
@@ -82,9 +75,9 @@ func (s *OTPService) GenerateAndStore(ctx context.Context, email, fingerprint st
 	otp := fmt.Sprintf("%06d", n.Int64()+100000)
 
 	// Reject if this email is currently blocked
-	blocked, err := s.IsEmailBlocked(ctx, email)
+	blocked, err := s.IsEmailBlocked(ctx, voterEmail)
 	if err != nil {
-		slog.Error("Failed to check OTP block status", "email", email, "error", err)
+		slog.Error("Failed to check OTP block status", "email", voterEmail, "error", err)
 		return fmt.Errorf("checking block status: %w", err)
 	}
 	if blocked {
@@ -93,19 +86,24 @@ func (s *OTPService) GenerateAndStore(ctx context.Context, email, fingerprint st
 
 	// Store "otp:candidateID:fingerprint" in Redis with 5-minute TTL
 	value := fmt.Sprintf("%s:%d:%s", otp, candidateID, fingerprint)
-	if err := s.redis.Set(ctx, otpKey(email), value, otpTTL).Err(); err != nil {
-		slog.Error("Failed to store OTP in Redis", "email", email, "error", err)
+	if err := s.redis.Set(ctx, otpKey(voterEmail), value, otpTTL).Err(); err != nil {
+		slog.Error("Failed to store OTP in Redis", "email", voterEmail, "error", err)
 		return fmt.Errorf("storing OTP: %w", err)
 	}
 
-	// Send the OTP via email
-	if err := s.sendEmail(email, otp); err != nil {
-		// Delete the stored OTP if sending fails to keep state consistent
-		s.redis.Del(ctx, otpKey(email))
+	// Queue the OTP email — the worker sends it asynchronously
+	subject := "Your Voting OTP Code"
+	body := fmt.Sprintf(
+		"Your one-time password to confirm your vote is: %s\n\nThis code expires in 5 minutes.",
+		otp,
+	)
+	if err := s.emailSvc.Enqueue(voterEmail, subject, body); err != nil {
+		// Delete the stored OTP if we couldn't send at all (queue + direct both failed)
+		s.redis.Del(ctx, otpKey(voterEmail))
 		return fmt.Errorf("sending OTP email: %w", err)
 	}
 
-	slog.Info("OTP generated and sent", "email", email, "candidate_id", candidateID)
+	slog.Info("OTP generated and queued", "email", voterEmail, "candidate_id", candidateID)
 	return nil
 }
 
@@ -185,31 +183,4 @@ func (s *OTPService) Verify(ctx context.Context, email, otp string) (fingerprint
 	slog.Info("OTP verified and consumed", "email", email, "candidate_id", parsedCandidateID)
 
 	return storedFingerprint, parsedCandidateID, nil
-}
-
-// sendEmail delivers the OTP code to the voter using STARTTLS SMTP.
-func (s *OTPService) sendEmail(to, otp string) error {
-	auth := smtp.PlainAuth("", s.smtpUser, s.smtpPass, s.smtpHost)
-
-	subject := "Your Voting OTP Code"
-	body := fmt.Sprintf(
-		"Your one-time password to confirm your vote is: %s\n\nThis code expires in 5 minutes.",
-		otp,
-	)
-
-	msg := "From: " + s.smtpFrom + "\r\n" +
-		"To: " + to + "\r\n" +
-		"Subject: " + subject + "\r\n" +
-		"MIME-Version: 1.0\r\n" +
-		"Content-Type: text/plain; charset=UTF-8\r\n" +
-		"\r\n" + body
-
-	addr := fmt.Sprintf("%s:%d", s.smtpHost, s.smtpPort)
-	if err := smtp.SendMail(addr, auth, s.smtpFrom, []string{to}, []byte(msg)); err != nil {
-		slog.Error("Failed to send OTP email", "to", to, "error", err)
-		return err
-	}
-
-	slog.Info("OTP email sent successfully", "to", to)
-	return nil
 }

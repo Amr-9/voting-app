@@ -47,3 +47,13 @@ CREATE TABLE IF NOT EXISTS voting_settings (
 
 -- Ensure the singleton row exists on every migration run
 INSERT IGNORE INTO voting_settings (id, is_open, ends_at) VALUES (1, 1, NULL);
+
+-- Email send log: يسجل الإيميلات الفاشلة بعد انتهاء كل محاولات الـ retry
+CREATE TABLE IF NOT EXISTS email_send_log (
+    id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+    to_address    VARCHAR(255) NOT NULL,
+    status        ENUM('failed') NOT NULL DEFAULT 'failed',
+    error_message TEXT NULL,
+    retry_count   INT NOT NULL DEFAULT 0,
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

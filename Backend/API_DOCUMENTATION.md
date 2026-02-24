@@ -435,8 +435,8 @@ ws://localhost:8080/ws
 
 #### Behavior
 1. Client connects to `ws://localhost:8080/ws`.
-2. Upon connection, the server immediately sends the current leaderboard snapshot.
-3. Whenever a new vote is successfully verified via `POST /api/vote/verify`, the server broadcasts the updated leaderboard to **all** connected clients.
+2. Upon connection, the server immediately sends the current leaderboard snapshot and voting status.
+3. Whenever a new vote is successfully verified via `POST /api/vote/verify`, or whenever an admin updates the voting settings via `PUT /api/admin/voting-settings`, the server broadcasts the updated payload to **all** connected clients.
 
 #### Message Format (Server → Client)
 ```json
@@ -458,7 +458,12 @@ ws://localhost:8080/ws
       "total_votes": 140,
       "created_at": "2024-02-23T10:05:00Z"
     }
-  ]
+  ],
+  "voting_status": {
+    "is_open": true,
+    "effectively_open": true,
+    "ends_at": "2025-12-31T18:00:00Z"
+  }
 }
 ```
 

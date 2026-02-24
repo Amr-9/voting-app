@@ -11,6 +11,7 @@ import (
 
 	"votingsystem/internal/config"
 	"votingsystem/internal/database"
+	"votingsystem/internal/email"
 	"votingsystem/internal/handler"
 	"votingsystem/internal/repository"
 	"votingsystem/internal/router"
@@ -42,6 +43,27 @@ func main() {
 	redisClient := database.NewRedis(cfg.RedisAddr, cfg.RedisPassword)
 	defer redisClient.Close()
 
+	// Initialize email queue service
+	emailSvc := email.New(email.Config{
+		RedisAddr:     cfg.RedisAddr,
+		RedisPassword: cfg.RedisPassword,
+		SMTPHost:      cfg.SMTPHost,
+		SMTPPort:      cfg.SMTPPort,
+		SMTPUser:      cfg.SMTPUser,
+		SMTPPass:      cfg.SMTPPass,
+		SMTPFrom:      cfg.SMTPFrom,
+		DB:            db,
+	})
+	defer emailSvc.Close()
+
+	// Start the email worker in the background
+	emailServer := emailSvc.NewServer()
+	if err := emailServer.Start(emailSvc.NewServeMux()); err != nil {
+		slog.Error("Failed to start email worker", "error", err)
+		os.Exit(1)
+	}
+	defer emailServer.Shutdown()
+
 	// Build repository layer
 	adminRepo := repository.NewAdminRepository(db)
 	candidateRepo := repository.NewCandidateRepository(db)
@@ -61,11 +83,7 @@ func main() {
 	// the updated state to all WS clients when an admin changes settings.
 	votingSettingsSvc := service.NewVotingSettingsService(votingSettingsRepo, redisClient, hub, candidateRepo)
 
-	otpSvc := service.NewOTPService(
-		redisClient,
-		cfg.SMTPHost, cfg.SMTPPort,
-		cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPFrom,
-	)
+	otpSvc := service.NewOTPService(redisClient, emailSvc)
 
 	// VoteService receives votingSettingsSvc so the WS broadcast includes voting_status.
 	voteSvc := service.NewVoteService(voteRepo, candidateRepo, otpSvc, hub, votingSettingsSvc)
