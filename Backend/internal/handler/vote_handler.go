@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -74,14 +75,19 @@ func (h *VoteHandler) RequestOTP(c *gin.Context) {
 		return
 	}
 
-	// Generate OTP, store in Redis, and send to email
-	if err := h.otpService.GenerateAndStore(c.Request.Context(), req.Email, req.Fingerprint, req.CandidateID); err != nil {
-		if err.Error() == "email blocked due to too many failed OTP attempts" {
+	// Check already voted + fingerprint + IP limit, then generate & queue OTP email
+	if err := h.voteService.PrepareOTPRequest(c.Request.Context(), req.Email, req.Fingerprint, c.ClientIP(), req.CandidateID); err != nil {
+		switch {
+		case errors.Is(err, service.ErrAlreadyVoted):
+			c.JSON(http.StatusConflict, gin.H{"error": "You have already cast your vote in this election."})
+		case errors.Is(err, service.ErrIPVoteLimitExceeded):
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "Vote limit reached from your network. Please contact the administrator."})
+		case err.Error() == "email blocked due to too many failed OTP attempts":
 			c.JSON(http.StatusTooManyRequests, gin.H{"error": "This email is temporarily blocked due to too many failed OTP attempts. Please try again later."})
-			return
+		default:
+			slog.Error("Failed to prepare OTP request", "email", req.Email, "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send OTP — please try again"})
 		}
-		slog.Error("Failed to generate/send OTP", "email", req.Email, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send OTP — please try again"})
 		return
 	}
 

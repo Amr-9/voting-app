@@ -77,6 +77,53 @@ func BuildWSPayload(ctx context.Context, candidateRepo *repository.CandidateRepo
 	return json.Marshal(payload)
 }
 
+// ErrAlreadyVoted is returned when the voter's email or fingerprint has already cast a vote.
+var ErrAlreadyVoted = fmt.Errorf("already voted")
+
+// ErrIPVoteLimitExceeded is returned when too many votes have been cast from the same IP.
+var ErrIPVoteLimitExceeded = fmt.Errorf("ip vote limit exceeded")
+
+// maxVotesPerIP is the maximum number of votes allowed from a single IP address.
+const maxVotesPerIP = 5
+
+// PrepareOTPRequest checks whether the email / fingerprint / IP are eligible to vote,
+// resolves the candidate name, then delegates to OTPService to generate and queue the email.
+// This is the single entry point for the request-OTP handler.
+func (s *VoteService) PrepareOTPRequest(ctx context.Context, email, fingerprint, ip string, candidateID int) error {
+	// Check email
+	if voted, err := s.voteRepo.HasVotedByEmail(email); err != nil {
+		return fmt.Errorf("checking email vote status: %w", err)
+	} else if voted {
+		return ErrAlreadyVoted
+	}
+
+	// Check device fingerprint (same device, different email attempt)
+	if voted, err := s.voteRepo.HasVotedByFingerprint(fingerprint); err != nil {
+		return fmt.Errorf("checking fingerprint vote status: %w", err)
+	} else if voted {
+		return ErrAlreadyVoted
+	}
+
+	// Check IP vote count (max 5 votes per IP to prevent mass voting)
+	if ip != "" {
+		count, err := s.voteRepo.CountVotesByIP(ip)
+		if err != nil {
+			return fmt.Errorf("checking ip vote count: %w", err)
+		}
+		if count >= maxVotesPerIP {
+			slog.Warn("IP vote limit exceeded", "ip", ip, "count", count)
+			return ErrIPVoteLimitExceeded
+		}
+	}
+
+	candidateName, err := s.candidateRepo.GetNameByID(candidateID)
+	if err != nil {
+		return fmt.Errorf("fetching candidate: %w", err)
+	}
+
+	return s.otpService.GenerateAndStore(ctx, email, fingerprint, candidateID, candidateName)
+}
+
 // VerifyAndVote validates the OTP, records the vote, and broadcasts updated results.
 //
 // Flow:

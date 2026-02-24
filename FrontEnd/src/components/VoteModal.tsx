@@ -69,6 +69,14 @@ export default function VoteModal({ candidate, onClose }: Props) {
       setStep(STEP.OTP)
       setTimeout(() => otpRefs.current[0]?.focus(), 100)
     } catch (err) {
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined
+      if (status === 409) {
+        localStorage.setItem('voted_candidate_id', String(candidate.id))
+        setIsAlreadyVoted(true)
+        setDoneMessage('You have already cast your vote in this election.')
+        setStep(STEP.DONE)
+        return
+      }
       const msg = axios.isAxiosError(err)
         ? (err.response?.data as { error?: string })?.error ?? 'Failed to send OTP. Please try again.'
         : 'Failed to send OTP. Please try again.'
@@ -90,6 +98,7 @@ export default function VoteModal({ candidate, onClose }: Props) {
 
     try {
       await voteAPI.verify(email, otpStr)
+      localStorage.setItem('voted_candidate_id', String(candidate.id))
       setDoneMessage('Your vote has been recorded! Thank you for participating.')
       setStep(STEP.DONE)
       toast.success('Vote recorded successfully!')
@@ -100,6 +109,7 @@ export default function VoteModal({ candidate, onClose }: Props) {
         : 'Verification failed.'
 
       if (status === 409) {
+        localStorage.setItem('voted_candidate_id', String(candidate.id))
         setIsAlreadyVoted(true)
         setDoneMessage('You have already cast your vote in this election.')
         setStep(STEP.DONE)

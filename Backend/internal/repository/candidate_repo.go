@@ -51,6 +51,14 @@ func (r *CandidateRepository) GetAllWithVotes() ([]models.Candidate, error) {
 	return candidates, nil
 }
 
+// GetNameByID returns only the candidate's name for the given ID.
+// Used to personalise OTP emails without fetching the full row.
+func (r *CandidateRepository) GetNameByID(id int) (string, error) {
+	var name string
+	err := r.db.QueryRow("SELECT name FROM candidates WHERE id = ?", id).Scan(&name)
+	return name, err
+}
+
 // InsertCandidate adds a new candidate to the database.
 func (r *CandidateRepository) InsertCandidate(name, description, imagePath string) (int64, error) {
 	result, err := r.db.Exec(

@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { User, CheckCircle2 } from 'lucide-react'
+import { User, CheckCircle2, CheckCheck } from 'lucide-react'
 import { getImageUrl } from '../utils/imageUrl.ts'
 import type { Candidate } from '../types/index.ts'
 
@@ -7,6 +7,7 @@ interface Props {
   candidate: Candidate
   rank: number
   onVote: (candidate: Candidate) => void
+  votedCandidateId?: number | null
 }
 
 const RANK_CONFIG: Record<number, { label: string; bg: string }> = {
@@ -15,9 +16,11 @@ const RANK_CONFIG: Record<number, { label: string; bg: string }> = {
   3: { label: '🥉', bg: 'bg-gradient-to-br from-orange-400 to-orange-700' },
 }
 
-export default function CandidateCard({ candidate, rank, onVote }: Props) {
+export default function CandidateCard({ candidate, rank, onVote, votedCandidateId }: Props) {
   const imageUrl = getImageUrl(candidate.image_path)
   const isLeader = rank === 1 && candidate.total_votes > 0
+  const hasVoted = votedCandidateId != null
+  const votedForThis = votedCandidateId === candidate.id
 
   const handleVote = useCallback(() => {
     onVote(candidate)
@@ -80,13 +83,25 @@ export default function CandidateCard({ candidate, rank, onVote }: Props) {
         </div>
 
         {/* Action Button */}
-        <button
-          onClick={handleVote}
-          className="mt-8 w-full py-4 px-5 rounded-2xl flex items-center justify-center gap-2.5 font-bold text-white bg-slate-900 dark:bg-white dark:text-slate-900 hover:bg-gradient-to-r hover:from-brand-500 hover:to-brand-600 dark:hover:from-brand-500 dark:hover:to-brand-600 dark:hover:text-white transition-all duration-300 shadow-lg hover:shadow-brand-500/25 hover:-translate-y-1 ring-2 ring-transparent hover:ring-brand-500/20 ring-offset-2 ring-offset-white dark:ring-offset-slate-900 active:scale-95"
-        >
-          <CheckCircle2 size={20} strokeWidth={2.5} />
-          Vote for {candidate.name.split(' ')[0]}
-        </button>
+        {votedForThis ? (
+          <div className="mt-8 w-full py-4 px-5 rounded-2xl flex items-center justify-center gap-2.5 font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+            <CheckCheck size={20} strokeWidth={2.5} />
+            You Voted
+          </div>
+        ) : hasVoted ? (
+          <div className="mt-8 w-full py-4 px-5 rounded-2xl flex items-center justify-center gap-2.5 font-bold text-slate-400 dark:text-slate-600 bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 cursor-not-allowed select-none">
+            <CheckCircle2 size={20} strokeWidth={2.5} />
+            Already Voted
+          </div>
+        ) : (
+          <button
+            onClick={handleVote}
+            className="mt-8 w-full py-4 px-5 rounded-2xl flex items-center justify-center gap-2.5 font-bold text-white bg-slate-900 dark:bg-white dark:text-slate-900 hover:bg-gradient-to-r hover:from-brand-500 hover:to-brand-600 dark:hover:from-brand-500 dark:hover:to-brand-600 dark:hover:text-white transition-all duration-300 shadow-lg hover:shadow-brand-500/25 hover:-translate-y-1 ring-2 ring-transparent hover:ring-brand-500/20 ring-offset-2 ring-offset-white dark:ring-offset-slate-900 active:scale-95"
+          >
+            <CheckCircle2 size={20} strokeWidth={2.5} />
+            Vote for {candidate.name.split(' ')[0]}
+          </button>
+        )}
       </div>
     </article>
   )

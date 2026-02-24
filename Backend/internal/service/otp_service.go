@@ -66,7 +66,7 @@ func (s *OTPService) IsEmailBlocked(ctx context.Context, email string) (bool, er
 // and queues an email to the voter via the async email worker.
 // The Redis value encodes: "{otp}:{candidateID}:{fingerprint}" so that VerifyVote
 // can confirm all three match — preventing OTP reuse across different candidates or devices.
-func (s *OTPService) GenerateAndStore(ctx context.Context, voterEmail, fingerprint string, candidateID int) error {
+func (s *OTPService) GenerateAndStore(ctx context.Context, voterEmail, fingerprint string, candidateID int, candidateName string) error {
 	// Generate a cryptographically secure 6-digit code
 	n, err := rand.Int(rand.Reader, big.NewInt(900000))
 	if err != nil {
@@ -92,10 +92,10 @@ func (s *OTPService) GenerateAndStore(ctx context.Context, voterEmail, fingerpri
 	}
 
 	// Queue the OTP email — the worker sends it asynchronously
-	subject := "Your Voting OTP Code"
+	subject := "Your Voting Verification Code"
 	body := fmt.Sprintf(
-		"Your one-time password to confirm your vote is: %s\n\nThis code expires in 5 minutes.",
-		otp,
+		"You are voting for: %s\n\nYour one-time verification code is: %s\n\nThis code expires in 5 minutes.\nIf you did not request this, please ignore this email.",
+		candidateName, otp,
 	)
 	if err := s.emailSvc.Enqueue(voterEmail, subject, body); err != nil {
 		// Delete the stored OTP if we couldn't send at all (queue + direct both failed)

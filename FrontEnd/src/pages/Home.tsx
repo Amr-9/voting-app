@@ -46,6 +46,10 @@ function useCountdown(endsAt: string | null): string | null {
 export default function Home() {
   const { candidates, votingStatus, status } = useWebSocket(WS_URL)
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null)
+  const [votedCandidateId, setVotedCandidateId] = useState<number | null>(() => {
+    const stored = localStorage.getItem('voted_candidate_id')
+    return stored ? Number(stored) : null
+  })
 
   // endsAt from the server snapshot / live broadcast
   const endsAt: string | null = votingStatus?.ends_at ?? null
@@ -75,6 +79,9 @@ export default function Home() {
 
   const handleCloseModal = useCallback(() => {
     setSelectedCandidate(null)
+    // Sync voted state from localStorage in case the user just voted inside the modal
+    const stored = localStorage.getItem('voted_candidate_id')
+    setVotedCandidateId(stored ? Number(stored) : null)
   }, [])
 
   return (
@@ -191,6 +198,7 @@ export default function Home() {
                 candidate={candidate}
                 rank={index + 1}
                 onVote={handleVote}
+                votedCandidateId={votedCandidateId}
               />
             ))}
           </div>
