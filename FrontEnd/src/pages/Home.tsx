@@ -47,11 +47,21 @@ export default function Home() {
   const { candidates, votingStatus, status } = useWebSocket(WS_URL)
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null)
 
-  // Voting status comes from the WebSocket initial snapshot + live broadcasts.
-  // null = server hasn't sent the first message yet (brief connecting state).
-  const votingOpen: boolean | null = votingStatus ? votingStatus.effectively_open : null
+  // endsAt from the server snapshot / live broadcast
   const endsAt: string | null = votingStatus?.ends_at ?? null
   const countdown = useCountdown(endsAt)
+
+  // votingOpen is derived locally so it reacts the instant ends_at passes.
+  // `countdown` is in the dependency array — it changes every second, so the moment
+  // it flips to null (time elapsed) the memo re-runs and votingOpen becomes false
+  // immediately, without waiting for a server broadcast or a page refresh.
+  const votingOpen: boolean | null = useMemo(() => {
+    if (!votingStatus) return null                          // not yet connected
+    if (!votingStatus.effectively_open) return false       // admin closed manually
+    if (endsAt && new Date(endsAt).getTime() <= Date.now()) return false  // local expiry
+    return true
+  }, [votingStatus, endsAt, countdown])                    // countdown drives the 1-s re-check
+
 
   const totalVotes = useMemo(
     () => candidates.reduce((sum, c) => sum + c.total_votes, 0),
@@ -99,9 +109,14 @@ export default function Home() {
             )}
           </div>
 
-          <h1 className="text-6xl md:text-8xl font-black tracking-tighter leading-[1.1] mb-6 text-slate-900 dark:text-white drop-shadow-sm">
-            Cast Your <span className="text-transparent bg-clip-text bg-gradient-to-br from-brand-500 via-brand-400 to-rose-400">Vote</span>
+          <h1 className="text-4xl sm:text-5xl md:text-7xl xl:text-8xl font-black tracking-tighter leading-[1.15] mb-6 text-slate-900 dark:text-white drop-shadow-sm w-full text-center overflow-visible">
+            Cast Your{' '}
+            <span className="inline-block text-transparent bg-clip-text bg-gradient-to-br from-brand-500 via-brand-400 to-rose-400 pb-3 pr-2">
+              Vote
+            </span>
           </h1>
+
+
 
           <p className="text-lg md:text-xl text-slate-600 dark:text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
             Make your voice heard. Our platform updates live instantly for all viewers, giving you the real-time pulse of the election.
