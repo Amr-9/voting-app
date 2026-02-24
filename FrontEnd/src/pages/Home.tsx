@@ -4,7 +4,6 @@ import Navbar from '../components/Navbar.tsx'
 import CandidateCard from '../components/CandidateCard.tsx'
 import VoteModal from '../components/VoteModal.tsx'
 import { useWebSocket } from '../hooks/useWebSocket.ts'
-import { votingAPI } from '../services/api.ts'
 import type { Candidate } from '../types/index.ts'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8071'
@@ -45,35 +44,14 @@ function useCountdown(endsAt: string | null): string | null {
 }
 
 export default function Home() {
-  const { candidates, status } = useWebSocket(WS_URL)
+  const { candidates, votingStatus, status } = useWebSocket(WS_URL)
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null)
 
-  // Voting status
-  const [votingOpen, setVotingOpen] = useState<boolean | null>(null) // null = loading
-  const [endsAt, setEndsAt] = useState<string | null>(null)
+  // Voting status comes from the WebSocket initial snapshot + live broadcasts.
+  // null = server hasn't sent the first message yet (brief connecting state).
+  const votingOpen: boolean | null = votingStatus ? votingStatus.effectively_open : null
+  const endsAt: string | null = votingStatus?.ends_at ?? null
   const countdown = useCountdown(endsAt)
-
-  useEffect(() => {
-    votingAPI.getStatus()
-      .then((s) => {
-        setVotingOpen(s.effectively_open)
-        setEndsAt(s.ends_at)
-      })
-      .catch(() => setVotingOpen(true)) // fail-open: don't block voters if status endpoint is down
-  }, [])
-
-  // Re-check every 30s in case ends_at passes while page is open
-  useEffect(() => {
-    const id = setInterval(() => {
-      votingAPI.getStatus()
-        .then((s) => {
-          setVotingOpen(s.effectively_open)
-          setEndsAt(s.ends_at)
-        })
-        .catch(() => {/* keep current state */ })
-    }, 30_000)
-    return () => clearInterval(id)
-  }, [])
 
   const totalVotes = useMemo(
     () => candidates.reduce((sum, c) => sum + c.total_votes, 0),

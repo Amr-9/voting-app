@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"votingsystem/internal/repository"
+	"votingsystem/internal/ws"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -21,14 +22,24 @@ type cachedSettings struct {
 
 // VotingSettingsService manages voting state with Redis as a cache in front of MariaDB.
 // Cache is invalidated whenever UpdateSettings is called.
+// When hub and candidateRepo are provided, a full WS broadcast is triggered on every
+// settings change so all connected clients learn the new open/closed state immediately.
 type VotingSettingsService struct {
-	repo  *repository.VotingSettingsRepository
-	redis *redis.Client
+	repo          *repository.VotingSettingsRepository
+	redis         *redis.Client
+	hub           *ws.Hub
+	candidateRepo *repository.CandidateRepository
 }
 
 // NewVotingSettingsService creates a new VotingSettingsService.
-func NewVotingSettingsService(repo *repository.VotingSettingsRepository, redis *redis.Client) *VotingSettingsService {
-	return &VotingSettingsService{repo: repo, redis: redis}
+// hub and candidateRepo are optional (pass nil to skip WS broadcasts).
+func NewVotingSettingsService(
+	repo *repository.VotingSettingsRepository,
+	redis *redis.Client,
+	hub *ws.Hub,
+	candidateRepo *repository.CandidateRepository,
+) *VotingSettingsService {
+	return &VotingSettingsService{repo: repo, redis: redis, hub: hub, candidateRepo: candidateRepo}
 }
 
 // GetStatus returns the current is_open flag and optional auto-stop time (UTC).
@@ -65,7 +76,8 @@ func (s *VotingSettingsService) IsVotingOpen(ctx context.Context) (bool, error) 
 	return true, nil
 }
 
-// UpdateSettings persists new settings to MariaDB and invalidates the Redis cache.
+// UpdateSettings persists new settings to MariaDB, invalidates the Redis cache,
+// and broadcasts the updated state to all connected WebSocket clients.
 // endsAt must be in UTC (or nil to clear auto-stop).
 func (s *VotingSettingsService) UpdateSettings(ctx context.Context, isOpen bool, endsAt *time.Time) error {
 	if err := s.repo.UpdateSettings(isOpen, endsAt); err != nil {
@@ -77,6 +89,19 @@ func (s *VotingSettingsService) UpdateSettings(ctx context.Context, isOpen bool,
 	}
 	// Eagerly re-populate so the very next request is fast
 	_ = s.toRedis(ctx, isOpen, endsAt)
+
+	// Broadcast new state to all connected WebSocket clients immediately.
+	// This replaces the 30-second polling that was previously on the frontend.
+	if s.hub != nil && s.candidateRepo != nil {
+		data, err := BuildWSPayload(ctx, s.candidateRepo, s)
+		if err != nil {
+			slog.Warn("Failed to build WS payload after settings update", "error", err)
+		} else {
+			s.hub.Broadcast <- data
+			slog.Info("Voting settings updated and broadcasted via WebSocket", "is_open", isOpen)
+		}
+	}
+
 	return nil
 }
 

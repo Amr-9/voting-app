@@ -110,7 +110,11 @@ var upgrader = websocket.Upgrader{
 }
 
 // ServeWS upgrades the HTTP connection to WebSocket and registers the client with the Hub.
-func ServeWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
+// snapshotFn, if non-nil, is called to build an initial state payload that is delivered
+// exclusively to this newly connected client before any future broadcasts arrive.
+// This ensures every user sees the current candidates + voting status instantly on connect
+// or on reconnect after an outage (exponential-backoff reconnect in the frontend).
+func ServeWS(hub *Hub, snapshotFn func() []byte, w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		slog.Error("WebSocket upgrade failed", "error", err)
@@ -124,6 +128,13 @@ func ServeWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 
 	hub.register <- client
+
+	// Push initial snapshot only to this client so it doesn't have to wait for the next vote
+	if snapshotFn != nil {
+		if msg := snapshotFn(); len(msg) > 0 {
+			hub.SendToOne(client, msg)
+		}
+	}
 
 	// Run read and write pumps in separate goroutines
 	go client.writePump()

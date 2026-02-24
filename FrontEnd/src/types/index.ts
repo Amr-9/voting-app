@@ -7,8 +7,14 @@ export interface Candidate {
   created_at: string
 }
 
+export interface WSVotingStatus {
+  effectively_open: boolean
+  ends_at: string | null
+}
+
 export interface WSMessage {
-  candidates: Candidate[]
+  candidates?: Candidate[]
+  voting_status?: WSVotingStatus
 }
 
 export type WSStatus = 'connecting' | 'connected' | 'disconnected'

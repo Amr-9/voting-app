@@ -48,22 +48,27 @@ func main() {
 	voteRepo := repository.NewVoteRepository(db)
 	votingSettingsRepo := repository.NewVotingSettingsRepository(db)
 
+	// WebSocket Hub — start the event loop in a background goroutine
+	hub := ws.NewHub()
+	go hub.Run()
+
 	// Build service layer
 	captchaSvc := service.NewCaptchaService(cfg.TurnstileSecret)
 	rateLimitSvc := service.NewRateLimitService(redisClient, cfg.RateLimitMax)
 	adminSvc := service.NewAdminService(adminRepo, cfg.JWTSecret)
-	votingSettingsSvc := service.NewVotingSettingsService(votingSettingsRepo, redisClient)
+
+	// VotingSettingsService receives hub + candidateRepo so it can broadcast
+	// the updated state to all WS clients when an admin changes settings.
+	votingSettingsSvc := service.NewVotingSettingsService(votingSettingsRepo, redisClient, hub, candidateRepo)
+
 	otpSvc := service.NewOTPService(
 		redisClient,
 		cfg.SMTPHost, cfg.SMTPPort,
 		cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPFrom,
 	)
 
-	// WebSocket Hub — start the event loop in a background goroutine
-	hub := ws.NewHub()
-	go hub.Run()
-
-	voteSvc := service.NewVoteService(voteRepo, candidateRepo, otpSvc, hub)
+	// VoteService receives votingSettingsSvc so the WS broadcast includes voting_status.
+	voteSvc := service.NewVoteService(voteRepo, candidateRepo, otpSvc, hub, votingSettingsSvc)
 
 	// Build handler layer
 	adminHandler := handler.NewAdminHandler(adminSvc, candidateRepo, "./uploads")
@@ -77,8 +82,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	// snapshotFn is called for every new WebSocket connection to deliver the
+	// current candidates + voting_status immediately (no round-trip, no polling).
+	// The same function is used on reconnect, so users always get fresh data.
+	snapshotFn := func() []byte {
+		ctx := context.Background()
+		data, err := service.BuildWSPayload(ctx, candidateRepo, votingSettingsSvc)
+		if err != nil {
+			slog.Warn("Failed to build initial WS snapshot", "error", err)
+			return nil
+		}
+		return data
+	}
+
 	// Assemble the Gin router
-	engine := router.Setup(hub, adminHandler, candidateHandler, voteHandler, votingSettingsHandler, cfg.JWTSecret, rateLimitSvc, cfg.CORSAllowedOrigins)
+	engine := router.Setup(hub, snapshotFn, adminHandler, candidateHandler, voteHandler, votingSettingsHandler, cfg.JWTSecret, rateLimitSvc, cfg.CORSAllowedOrigins)
 
 	// Configure the HTTP server with timeouts
 	srv := &http.Server{

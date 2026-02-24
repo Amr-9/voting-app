@@ -28,6 +28,16 @@ func NewHub() *Hub {
 	}
 }
 
+// SendToOne delivers a message to a single client without going through the broadcast channel.
+// Used to push an initial state snapshot to a newly connected client.
+func (h *Hub) SendToOne(client *Client, msg []byte) {
+	select {
+	case client.send <- msg:
+	default:
+		// Client's buffer is full — skip the snapshot; it will reconnect if needed
+	}
+}
+
 // Run starts the Hub event loop. Must be called as a goroutine.
 func (h *Hub) Run() {
 	for {

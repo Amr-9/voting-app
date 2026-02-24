@@ -12,9 +12,11 @@ import (
 )
 
 // Setup builds and returns the Gin engine with all routes registered.
+// snapshotFn is called on each new WebSocket connection to produce an initial state payload.
 // allowedOrigins is a comma-separated list of allowed CORS origins (e.g. "https://vote.com,https://admin.vote.com").
 func Setup(
 	hub *ws.Hub,
+	snapshotFn func() []byte,
 	adminHandler *handler.AdminHandler,
 	candidateHandler *handler.CandidateHandler,
 	voteHandler *handler.VoteHandler,
@@ -34,9 +36,10 @@ func Setup(
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	// WebSocket endpoint — clients connect here to receive live vote updates
+	// WebSocket endpoint — clients connect here to receive live vote updates.
+	// snapshotFn ensures every client gets the current state immediately on connect/reconnect.
 	r.GET("/ws", func(c *gin.Context) {
-		ws.ServeWS(hub, c.Writer, c.Request)
+		ws.ServeWS(hub, snapshotFn, c.Writer, c.Request)
 	})
 
 	api := r.Group("/api")
