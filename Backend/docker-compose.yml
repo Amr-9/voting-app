@@ -54,6 +54,22 @@ services:
       timeout: 3s
       retries: 10
 
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: voting_pma
+    restart: always
+    environment:
+      PMA_HOST: mariadb
+      PMA_PORT: 3306
+    ports:
+      - "8072:80"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    networks:
+      - voting_net
+      - docker-app_app_network
+
 volumes:
   mariadb_data:
   uploads_data:
