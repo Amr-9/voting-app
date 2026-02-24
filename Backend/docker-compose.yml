@@ -44,28 +44,21 @@ services:
       start_period: 30s
 
   redis:
-    image: ghcr.io/dragonflydb/dragonfly:latest
+    image: redis:7.4-alpine
     container_name: voting_redis
     restart: always
-    entrypoint: ["dragonfly", "--logtostdout", "--snapshot_cron", "* * * * *", "--dir", "/data", "--lua_allow_undeclared_keys"]
-    ulimits:
-      memlock: -1
-    volumes:
-      - dragonfly_data:/data
     networks:
       - voting_net
       - docker-app_app_network
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping || exit 1"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
-      start_period: 15s
 
 volumes:
   mariadb_data:
   uploads_data:
-  dragonfly_data:
 
 networks:
   voting_net:
