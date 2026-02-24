@@ -26,10 +26,10 @@ services:
     container_name: voting_db
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: voting_db
-      MYSQL_USER: voting_user
-      MYSQL_PASSWORD: voting_pass
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASS}
     volumes:
       # Persist database data across container restarts
       - mariadb_data:/var/lib/mysql
