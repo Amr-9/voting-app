@@ -90,6 +90,7 @@ var allowedEmailDomains = map[string]struct{}{
 	"yahoo.com.br":    {},
 	"yahoo.com.ar":    {},
 	"pm.me":           {},
+	"googlemail.com":  {}, // historical Gmail alias (Germany, UK); treated as gmail.com
 }
 
 // isEmailDomainAllowed returns true if the email's domain is in the allowlist.
@@ -101,4 +102,38 @@ func isEmailDomainAllowed(email string) bool {
 	domain := strings.ToLower(email[at+1:])
 	_, ok := allowedEmailDomains[domain]
 	return ok
+}
+
+// normalizeEmail canonicalizes an email address to prevent duplicate-vote tricks:
+//
+//   - Lowercases the entire address.
+//   - For all providers: strips the plus-suffix from the local part
+//     (e.g. amr+test@outlook.com → amr@outlook.com).
+//   - For Gmail / Googlemail only: also removes dots from the local part
+//     (e.g. a.m.r@gmail.com → amr@gmail.com) and normalizes googlemail.com → gmail.com.
+//     Both rules mirror Gmail's own identity-equivalence behaviour.
+//
+// The result is stored in the DB and used as the Redis OTP key, so both
+// RequestOTP and VerifyVote must normalize before any lookup or insert.
+func normalizeEmail(email string) string {
+	email = strings.ToLower(email)
+
+	at := strings.LastIndex(email, "@")
+	if at < 0 {
+		return email // malformed — let the binding validator catch it
+	}
+	local, domain := email[:at], email[at+1:]
+
+	// Strip plus-suffix for all providers
+	if plus := strings.Index(local, "+"); plus >= 0 {
+		local = local[:plus]
+	}
+
+	// Gmail-specific: remove dots and canonicalize googlemail.com → gmail.com
+	if domain == "gmail.com" || domain == "googlemail.com" {
+		local = strings.ReplaceAll(local, ".", "")
+		domain = "gmail.com"
+	}
+
+	return local + "@" + domain
 }

@@ -57,6 +57,9 @@ func (h *VoteHandler) RequestOTP(c *gin.Context) {
 		return
 	}
 
+	// Canonicalize before any lookup or storage: strips plus-suffix and Gmail dots.
+	req.Email = normalizeEmail(req.Email)
+
 	// Reject emails from domains that are not in the allowed list
 	if !isEmailDomainAllowed(req.Email) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Email domain is not supported. Please use a common email provider (e.g. gmail.com, outlook.com)."})
@@ -125,6 +128,9 @@ func (h *VoteHandler) VerifyVote(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
 		return
 	}
+
+	// Must normalize here too — Redis OTP key was stored under the normalized address.
+	req.Email = normalizeEmail(req.Email)
 
 	if err := h.voteService.VerifyAndVote(c.Request.Context(), req.Email, req.OTP, c.ClientIP(), c.Request.UserAgent()); err != nil {
 		errMsg := err.Error()
