@@ -20,16 +20,14 @@ type AdminHandler struct {
 	adminService  *service.AdminService
 	candidateRepo *repository.CandidateRepository
 	uploadDir     string
-	cookieSecure  bool
 }
 
 // NewAdminHandler creates a new AdminHandler.
-func NewAdminHandler(svc *service.AdminService, repo *repository.CandidateRepository, uploadDir string, cookieSecure bool) *AdminHandler {
+func NewAdminHandler(svc *service.AdminService, repo *repository.CandidateRepository, uploadDir string) *AdminHandler {
 	return &AdminHandler{
 		adminService:  svc,
 		candidateRepo: repo,
 		uploadDir:     uploadDir,
-		cookieSecure:  cookieSecure,
 	}
 }
 
@@ -55,15 +53,16 @@ func (h *AdminHandler) Login(c *gin.Context) {
 	}
 
 	// Plant the JWT as an HttpOnly cookie — JS cannot read it (XSS protection).
-	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie("admin_token", token, 86400, "/", "", h.cookieSecure, true)
+	// SameSite=None; Secure works cross-domain (prod) and on localhost (dev).
+	c.SetSameSite(http.SameSiteNoneMode)
+	c.SetCookie("admin_token", token, 86400, "/", "", true, true)
 	c.JSON(http.StatusOK, gin.H{"message": "success"})
 }
 
 // Logout clears the admin_token cookie, effectively ending the session.
 func (h *AdminHandler) Logout(c *gin.Context) {
-	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie("admin_token", "", -1, "/", "", h.cookieSecure, true)
+	c.SetSameSite(http.SameSiteNoneMode)
+	c.SetCookie("admin_token", "", -1, "/", "", true, true)
 	c.JSON(http.StatusOK, gin.H{"message": "success"})
 }
 

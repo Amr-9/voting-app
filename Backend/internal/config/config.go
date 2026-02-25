@@ -43,8 +43,6 @@ type Config struct {
 	// Rate limiting
 	RateLimitMax int
 
-	// Cookie
-	CookieSecure bool
 }
 
 // Load reads .env (if present) and returns a populated Config.
@@ -56,7 +54,6 @@ func Load() *Config {
 
 	smtpPort, _ := strconv.Atoi(getEnv("SMTP_PORT", "587"))
 	rateLimitMax, _ := strconv.Atoi(getEnv("RATE_LIMIT_MAX", "5"))
-	cookieSecure, _ := strconv.ParseBool(getEnv("COOKIE_SECURE", "false"))
 
 	dbDSN := fmt.Sprintf("%s:%s@tcp(%s:3306)/%s?parseTime=true&charset=utf8mb4",
 		getEnv("DB_USER"),
@@ -81,7 +78,6 @@ func Load() *Config {
 		SMTPFrom:             getEnv("SMTP_FROM"),
 		TurnstileSecret:      getEnv("TURNSTILE_SECRET"),
 		RateLimitMax:         rateLimitMax,
-		CookieSecure:         cookieSecure,
 	}
 }
 
