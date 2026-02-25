@@ -1,6 +1,42 @@
 package handler
 
-import "strings"
+import (
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+// domainLabelRe validates a single DNS label: starts and ends with alphanumeric,
+// may contain hyphens in the middle. Lowercase only (caller must normalise first).
+var domainLabelRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9\-]*[a-z0-9])?$`)
+
+// validateDomain returns an error message if domain is not a valid host domain.
+// The domain must already be lowercased and trimmed before calling.
+// Returns an empty string when the domain is valid.
+func validateDomain(domain string) string {
+	if len(domain) == 0 || len(domain) > 253 {
+		return "domain must be between 1 and 253 characters"
+	}
+	if strings.Contains(domain, "@") {
+		return "domain must not contain '@'; provide only the domain part (e.g. myuniversity.edu.eg)"
+	}
+	if strings.HasPrefix(domain, ".") || strings.HasSuffix(domain, ".") {
+		return "domain must not start or end with a dot"
+	}
+	if !strings.Contains(domain, ".") {
+		return "domain must contain at least one dot (e.g. example.com)"
+	}
+	labels := strings.Split(domain, ".")
+	for _, label := range labels {
+		if label == "" {
+			return "domain contains consecutive dots"
+		}
+		if !domainLabelRe.MatchString(label) {
+			return fmt.Sprintf("domain label %q contains invalid characters (only a-z, 0-9, and hyphens allowed)", label)
+		}
+	}
+	return ""
+}
 
 // allowedEmailDomains is the set of permitted email provider domains.
 // Any email whose domain is not in this set will be rejected at OTP request time.

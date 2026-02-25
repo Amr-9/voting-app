@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Candidate } from '../types/index.ts'
+import type { Candidate, CustomDomain } from '../types/index.ts'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
@@ -119,6 +119,16 @@ export const adminAPI = {
       old_password: oldPassword,
       new_password: newPassword,
     }),
+
+  listDomains: (): Promise<CustomDomain[]> =>
+    api.get<{ message: string; data: CustomDomain[] }>('/api/admin/email-domains')
+      .then((res) => res.data.data ?? []),
+
+  addDomain: (domain: string): Promise<void> =>
+    api.post('/api/admin/email-domains', { domain }).then(() => {}),
+
+  deleteDomain: (id: number): Promise<void> =>
+    api.delete(`/api/admin/email-domains/${id}`).then(() => {}),
 }
 
 export default api

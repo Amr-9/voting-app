@@ -69,6 +69,12 @@ func main() {
 	candidateRepo := repository.NewCandidateRepository(db)
 	voteRepo := repository.NewVoteRepository(db)
 	votingSettingsRepo := repository.NewVotingSettingsRepository(db)
+	customDomainRepo := repository.NewCustomDomainRepository(db, redisClient)
+
+	// Warm the custom domain Redis cache from DB on startup.
+	if err := customDomainRepo.WarmCache(context.Background()); err != nil {
+		slog.Warn("Failed to warm custom domain cache — DB fallback active", "error", err)
+	}
 
 	// WebSocket Hub — start the event loop in a background goroutine
 	hub := ws.NewHub()
@@ -89,9 +95,9 @@ func main() {
 	voteSvc := service.NewVoteService(voteRepo, candidateRepo, otpSvc, hub, votingSettingsSvc)
 
 	// Build handler layer
-	adminHandler := handler.NewAdminHandler(adminSvc, candidateRepo, "./uploads")
+	adminHandler := handler.NewAdminHandler(adminSvc, candidateRepo, customDomainRepo, "./uploads")
 	candidateHandler := handler.NewCandidateHandler(candidateRepo)
-	voteHandler := handler.NewVoteHandler(otpSvc, voteSvc, captchaSvc, votingSettingsSvc)
+	voteHandler := handler.NewVoteHandler(otpSvc, voteSvc, captchaSvc, votingSettingsSvc, customDomainRepo)
 	votingSettingsHandler := handler.NewVotingSettingsHandler(votingSettingsSvc)
 
 	// Ensure uploads directory exists

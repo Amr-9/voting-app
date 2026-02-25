@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
 
+	"votingsystem/internal/repository"
 	"votingsystem/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -13,20 +15,36 @@ import (
 
 // VoteHandler handles all voting-related HTTP endpoints.
 type VoteHandler struct {
-	otpService     *service.OTPService
-	voteService    *service.VoteService
-	captchaService *service.CaptchaService
-	votingSettings *service.VotingSettingsService
+	otpService       *service.OTPService
+	voteService      *service.VoteService
+	captchaService   *service.CaptchaService
+	votingSettings   *service.VotingSettingsService
+	customDomainRepo *repository.CustomDomainRepository
 }
 
 // NewVoteHandler creates a new VoteHandler.
-func NewVoteHandler(otp *service.OTPService, vote *service.VoteService, captcha *service.CaptchaService, settings *service.VotingSettingsService) *VoteHandler {
+func NewVoteHandler(otp *service.OTPService, vote *service.VoteService, captcha *service.CaptchaService, settings *service.VotingSettingsService, customDomainRepo *repository.CustomDomainRepository) *VoteHandler {
 	return &VoteHandler{
-		otpService:     otp,
-		voteService:    vote,
-		captchaService: captcha,
-		votingSettings: settings,
+		otpService:       otp,
+		voteService:      vote,
+		captchaService:   captcha,
+		votingSettings:   settings,
+		customDomainRepo: customDomainRepo,
 	}
+}
+
+// isEmailAllowed checks the hardcoded domain list first (fast, no I/O),
+// then falls back to the admin-managed custom domains in Redis/DB.
+func (h *VoteHandler) isEmailAllowed(ctx context.Context, email string) (bool, error) {
+	if isEmailDomainAllowed(email) {
+		return true, nil
+	}
+	at := strings.LastIndex(email, "@")
+	if at < 0 {
+		return false, nil
+	}
+	domain := strings.ToLower(email[at+1:])
+	return h.customDomainRepo.IsDomainAllowed(ctx, domain)
 }
 
 // RequestOTPRequest is the expected JSON body for POST /api/vote/request-otp.
@@ -60,8 +78,14 @@ func (h *VoteHandler) RequestOTP(c *gin.Context) {
 	// Canonicalize before any lookup or storage: strips plus-suffix and Gmail dots.
 	req.Email = normalizeEmail(req.Email)
 
-	// Reject emails from domains that are not in the allowed list
-	if !isEmailDomainAllowed(req.Email) {
+	// Reject emails from domains that are not in the allowed list (hardcoded or custom).
+	allowed, domainErr := h.isEmailAllowed(c.Request.Context(), req.Email)
+	if domainErr != nil {
+		slog.Error("Failed to check email domain", "email", req.Email, "error", domainErr)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify email domain"})
+		return
+	}
+	if !allowed {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Email domain is not supported. Please use a common email provider (e.g. gmail.com, outlook.com)."})
 		return
 	}

@@ -75,6 +75,9 @@ func Setup(
 			admin.PUT("/candidates/:id", adminHandler.UpdateCandidate)
 			admin.DELETE("/candidates/:id", adminHandler.DeleteCandidate)
 			admin.PUT("/voting-settings", votingSettingsHandler.UpdateVotingSettings)
+			admin.GET("/email-domains", adminHandler.ListDomains)
+			admin.POST("/email-domains", adminHandler.AddDomain)
+			admin.DELETE("/email-domains/:id", adminHandler.DeleteDomain)
 		}
 	}
 

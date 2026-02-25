@@ -1,3 +1,9 @@
+export interface CustomDomain {
+  id: number
+  domain: string
+  created_at: string
+}
+
 export interface Candidate {
   id: number
   name: string

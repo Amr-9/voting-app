@@ -23,6 +23,9 @@
    - [PUT /api/admin/candidates/:id](#put-apiadmincandidatesid)
    - [DELETE /api/admin/candidates/:id](#delete-apiadmincandidatesid)
    - [PUT /api/admin/voting-settings](#put-apiadminvoting-settings)
+   - [GET /api/admin/email-domains](#get-apiadminemail-domains)
+   - [POST /api/admin/email-domains](#post-apiadminemail-domains)
+   - [DELETE /api/admin/email-domains/:id](#delete-apiadminemail-domainsid)
 4. [Real-Time & System Endpoints](#real-time--system-endpoints)
    - [GET /ws](#get-ws)
    - [GET /health](#get-health)
@@ -515,6 +518,118 @@ Content-Type: application/json
 
 ---
 
+### GET /api/admin/email-domains
+
+Returns all admin-added custom email domains that are allowed for voting (additive to the 94 built-in providers).
+
+> **Authentication**: Required — valid `admin_token` cookie
+
+#### Success Response `200 OK`
+```json
+{
+  "message": "success",
+  "data": [
+    {
+      "id": 1,
+      "domain": "myuniversity.edu.eg",
+      "created_at": "2025-03-01T10:00:00Z"
+    },
+    {
+      "id": 2,
+      "domain": "company.org",
+      "created_at": "2025-03-02T14:30:00Z"
+    }
+  ]
+}
+```
+
+> **Note**: `data` will be an empty array `[]` if no custom domains have been added yet.
+
+#### Error Responses
+| Status Code | Error Message | Description |
+|-------------|---------------|-------------|
+| `401` | `Authentication required` | Auth cookie is absent, invalid, or expired |
+| `500` | `Failed to fetch custom domains` | Unexpected database error |
+
+---
+
+### POST /api/admin/email-domains
+
+Adds a new custom email domain to the allowed list. Voters using emails from this domain will be able to request an OTP.
+
+> **Authentication**: Required — valid `admin_token` cookie
+
+#### Headers
+```
+Content-Type: application/json
+```
+
+#### Request Body
+```json
+{
+  "domain": "myuniversity.edu.eg"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `domain` | string | ✅ | The domain to allow (e.g. `myuniversity.edu.eg`). Do **not** include `@`. |
+
+**Validation rules:**
+- Must be lowercase (normalized automatically)
+- Length: 1–253 characters
+- Must contain at least one dot (e.g. `example.com`)
+- Must not start or end with a dot
+- Each label between dots: only letters (`a-z`), digits (`0-9`), and hyphens (`-`); cannot start or end with a hyphen
+- Cannot be a domain already in the built-in list (e.g. `gmail.com`, `outlook.com`)
+
+#### Success Response `201 Created`
+```json
+{
+  "message": "success",
+  "data": {
+    "detail": "Domain added successfully",
+    "domain": "myuniversity.edu.eg"
+  }
+}
+```
+
+#### Error Responses
+| Status Code | Error Message | Description |
+|-------------|---------------|-------------|
+| `400` | `Invalid request body` | Missing or malformed JSON |
+| `400` | *(validation message)* | Domain format is invalid (see validation rules above) |
+| `401` | `Authentication required` | Auth cookie is absent, invalid, or expired |
+| `409` | `Domain is already in the built-in allowed list` | Domain is one of the 94 pre-configured providers |
+| `409` | `Domain is already in the custom allowed list` | Domain was already added before |
+| `500` | `Failed to add domain` | Unexpected database error |
+
+---
+
+### DELETE /api/admin/email-domains/:id
+
+Removes a custom email domain. After deletion, voters with emails from this domain will no longer be able to request an OTP.
+
+> **Authentication**: Required — valid `admin_token` cookie
+
+#### URL Parameters
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | integer | ID of the custom domain (from `GET /api/admin/email-domains`) |
+
+#### Success Response `204 No Content`
+No response body.
+
+#### Error Responses
+| Status Code | Error Message | Description |
+|-------------|---------------|-------------|
+| `400` | `Invalid domain ID` | ID parameter is not a valid integer ≥ 1 |
+| `401` | `Authentication required` | Auth cookie is absent, invalid, or expired |
+| `404` | `Domain not found` | No custom domain with the given ID exists |
+| `500` | `Failed to delete domain` | Unexpected database error |
+
+---
+
 ## Real-Time & System Endpoints
 
 ---
@@ -579,4 +694,4 @@ Simple health check to monitor server status.
 
 ---
 
-*Last Updated: 2026-02-25*
+*Last Updated: 2026-02-25 — Added custom email domains management endpoints*

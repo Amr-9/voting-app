@@ -57,3 +57,13 @@ CREATE TABLE IF NOT EXISTS email_send_log (
     retry_count   INT NOT NULL DEFAULT 0,
     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Custom email domains: admin-managed list of allowed domains (additive to hardcoded list)
+CREATE TABLE IF NOT EXISTS custom_email_domains (
+    id         INT AUTO_INCREMENT PRIMARY KEY,
+    domain     VARCHAR(253) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index for fast domain lookups during OTP domain validation
+CREATE INDEX IF NOT EXISTS idx_custom_domain ON custom_email_domains(domain);

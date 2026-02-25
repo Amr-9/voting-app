@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"votingsystem/internal/repository"
 	"votingsystem/internal/service"
@@ -67,17 +68,19 @@ func (h *AdminHandler) saveImage(file multipart.File) (string, error) {
 
 // AdminHandler handles all admin-related HTTP endpoints.
 type AdminHandler struct {
-	adminService  *service.AdminService
-	candidateRepo *repository.CandidateRepository
-	uploadDir     string
+	adminService     *service.AdminService
+	candidateRepo    *repository.CandidateRepository
+	customDomainRepo *repository.CustomDomainRepository
+	uploadDir        string
 }
 
 // NewAdminHandler creates a new AdminHandler.
-func NewAdminHandler(svc *service.AdminService, repo *repository.CandidateRepository, uploadDir string) *AdminHandler {
+func NewAdminHandler(svc *service.AdminService, repo *repository.CandidateRepository, customDomainRepo *repository.CustomDomainRepository, uploadDir string) *AdminHandler {
 	return &AdminHandler{
-		adminService:  svc,
-		candidateRepo: repo,
-		uploadDir:     uploadDir,
+		adminService:     svc,
+		candidateRepo:    repo,
+		customDomainRepo: customDomainRepo,
+		uploadDir:        uploadDir,
 	}
 }
 
@@ -289,6 +292,91 @@ func (h *AdminHandler) DeleteCandidate(c *gin.Context) {
 			slog.Error("DeleteCandidate failed", "id", candidateID, "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete candidate"})
 		}
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+// AddDomainRequest is the expected JSON body for POST /api/admin/email-domains.
+type AddDomainRequest struct {
+	Domain string `json:"domain" binding:"required"`
+}
+
+// ListDomains returns all admin-added custom email domains.
+// Protected by JWT middleware.
+func (h *AdminHandler) ListDomains(c *gin.Context) {
+	domains, err := h.customDomainRepo.GetAll()
+	if err != nil {
+		slog.Error("ListDomains failed", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch custom domains"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"message": "success",
+		"data":    domains,
+	})
+}
+
+// AddDomain adds a new custom email domain to the allowed list.
+// Protected by JWT middleware.
+func (h *AdminHandler) AddDomain(c *gin.Context) {
+	var req AddDomainRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
+		return
+	}
+
+	// Normalize: lowercase, trim whitespace, strip accidental leading "@".
+	domain := strings.ToLower(strings.TrimSpace(req.Domain))
+	if strings.HasPrefix(domain, "@") {
+		domain = domain[1:]
+	}
+
+	if errMsg := validateDomain(domain); errMsg != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": errMsg})
+		return
+	}
+
+	// Reject if the domain is already covered by the built-in hardcoded list.
+	if _, exists := allowedEmailDomains[domain]; exists {
+		c.JSON(http.StatusConflict, gin.H{"error": "Domain is already in the built-in allowed list"})
+		return
+	}
+
+	if err := h.customDomainRepo.Insert(c.Request.Context(), domain); err != nil {
+		if errors.Is(err, repository.ErrDomainAlreadyExists) {
+			c.JSON(http.StatusConflict, gin.H{"error": "Domain is already in the custom allowed list"})
+			return
+		}
+		slog.Error("AddDomain failed", "domain", domain, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add domain"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "success",
+		"data":    gin.H{"detail": "Domain added successfully", "domain": domain},
+	})
+}
+
+// DeleteDomain removes a custom email domain by ID.
+// Protected by JWT middleware.
+func (h *AdminHandler) DeleteDomain(c *gin.Context) {
+	idParam := c.Param("id")
+	id, err := strconv.Atoi(idParam)
+	if err != nil || id < 1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid domain ID"})
+		return
+	}
+
+	if err := h.customDomainRepo.Delete(c.Request.Context(), id); err != nil {
+		if errors.Is(err, repository.ErrDomainNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Domain not found"})
+			return
+		}
+		slog.Error("DeleteDomain failed", "id", id, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete domain"})
 		return
 	}
 
