@@ -78,6 +78,7 @@ func Setup(
 			admin.GET("/email-domains", adminHandler.ListDomains)
 			admin.POST("/email-domains", adminHandler.AddDomain)
 			admin.DELETE("/email-domains/:id", adminHandler.DeleteDomain)
+			admin.PUT("/email-domains/mode", votingSettingsHandler.UpdateDomainMode)
 		}
 	}
 

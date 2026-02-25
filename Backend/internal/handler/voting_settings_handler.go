@@ -20,23 +20,23 @@ func NewVotingSettingsHandler(svc *service.VotingSettingsService) *VotingSetting
 }
 
 // GetVotingStatus handles GET /api/voting-status (public).
-// Returns the current open/closed state and optional auto-stop UTC time.
+// Returns the current open/closed state, optional auto-stop UTC time, and domain mode.
 func (h *VotingSettingsHandler) GetVotingStatus(c *gin.Context) {
-	isOpen, endsAt, err := h.svc.GetStatus(c.Request.Context())
+	isOpen, endsAt, customDomainsOnly, err := h.svc.GetStatus(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch voting status"})
 		return
 	}
 
-	// Also evaluate whether voting is effectively open (respects ends_at expiry)
 	effectivelyOpen, _ := h.svc.IsVotingOpen(c.Request.Context())
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "success",
 		"data": gin.H{
-			"is_open":          isOpen,
-			"effectively_open": effectivelyOpen,
-			"ends_at":          endsAt, // UTC or null
+			"is_open":             isOpen,
+			"effectively_open":    effectivelyOpen,
+			"ends_at":             endsAt, // UTC or null
+			"custom_domains_only": customDomainsOnly,
 		},
 	})
 }
@@ -76,5 +76,31 @@ func (h *VotingSettingsHandler) UpdateVotingSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "success",
 		"data":    gin.H{"detail": "Voting settings updated successfully"},
+	})
+}
+
+// UpdateDomainModeRequest is the expected JSON body for PUT /api/admin/email-domains/mode.
+type UpdateDomainModeRequest struct {
+	CustomDomainsOnly bool `json:"custom_domains_only"`
+}
+
+// UpdateDomainMode handles PUT /api/admin/email-domains/mode (JWT-protected).
+// When custom_domains_only is true, only admin-added domains are accepted;
+// the built-in 94 providers are ignored.
+func (h *VotingSettingsHandler) UpdateDomainMode(c *gin.Context) {
+	var req UpdateDomainModeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
+		return
+	}
+
+	if err := h.svc.UpdateCustomDomainsOnly(c.Request.Context(), req.CustomDomainsOnly); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update domain mode"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "success",
+		"data":    gin.H{"detail": "Domain mode updated successfully", "custom_domains_only": req.CustomDomainsOnly},
 	})
 }

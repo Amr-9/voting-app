@@ -39,6 +39,7 @@ export interface VotingStatus {
   is_open: boolean
   effectively_open: boolean
   ends_at: string | null // RFC 3339 UTC, or null
+  custom_domains_only: boolean
 }
 
 export const votingAPI = {
@@ -129,6 +130,9 @@ export const adminAPI = {
 
   deleteDomain: (id: number): Promise<void> =>
     api.delete(`/api/admin/email-domains/${id}`).then(() => {}),
+
+  updateDomainMode: (customDomainsOnly: boolean): Promise<void> =>
+    api.put('/api/admin/email-domains/mode', { custom_domains_only: customDomainsOnly }).then(() => {}),
 }
 
 export default api

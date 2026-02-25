@@ -33,12 +33,20 @@ func NewVoteHandler(otp *service.OTPService, vote *service.VoteService, captcha 
 	}
 }
 
-// isEmailAllowed checks the hardcoded domain list first (fast, no I/O),
-// then falls back to the admin-managed custom domains in Redis/DB.
+// isEmailAllowed checks whether the email's domain is permitted.
+// When custom_domains_only is false (default): checks the hardcoded 94-provider list first,
+// then falls back to the admin-managed custom domains.
+// When custom_domains_only is true: skips the built-in list and only checks custom domains.
 func (h *VoteHandler) isEmailAllowed(ctx context.Context, email string) (bool, error) {
-	if isEmailDomainAllowed(email) {
+	customOnly, err := h.votingSettings.GetCustomDomainsOnly(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	if !customOnly && isEmailDomainAllowed(email) {
 		return true, nil
 	}
+
 	at := strings.LastIndex(email, "@")
 	if at < 0 {
 		return false, nil

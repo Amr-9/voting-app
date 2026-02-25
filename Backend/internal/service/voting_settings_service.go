@@ -16,12 +16,13 @@ const votingSettingsRedisKey = "voting:settings"
 
 // cachedSettings is the shape stored in Redis as JSON.
 type cachedSettings struct {
-	IsOpen bool       `json:"is_open"`
-	EndsAt *time.Time `json:"ends_at"` // UTC, nil = no auto-stop
+	IsOpen            bool       `json:"is_open"`
+	EndsAt            *time.Time `json:"ends_at"`             // UTC, nil = no auto-stop
+	CustomDomainsOnly bool       `json:"custom_domains_only"` // true = ignore built-in 94 providers
 }
 
 // VotingSettingsService manages voting state with Redis as a cache in front of MariaDB.
-// Cache is invalidated whenever UpdateSettings is called.
+// Cache is invalidated whenever UpdateSettings or UpdateCustomDomainsOnly is called.
 // When hub and candidateRepo are provided, a full WS broadcast is triggered on every
 // settings change so all connected clients learn the new open/closed state immediately.
 type VotingSettingsService struct {
@@ -42,28 +43,29 @@ func NewVotingSettingsService(
 	return &VotingSettingsService{repo: repo, redis: redis, hub: hub, candidateRepo: candidateRepo}
 }
 
-// GetStatus returns the current is_open flag and optional auto-stop time (UTC).
+// GetStatus returns the current settings: is_open flag, optional auto-stop time (UTC),
+// and whether only custom domains are allowed.
 // It reads from Redis first; on miss, falls back to MariaDB and re-populates the cache.
-func (s *VotingSettingsService) GetStatus(ctx context.Context) (isOpen bool, endsAt *time.Time, err error) {
+func (s *VotingSettingsService) GetStatus(ctx context.Context) (isOpen bool, endsAt *time.Time, customDomainsOnly bool, err error) {
 	cached, err := s.fromRedis(ctx)
 	if err == nil {
-		return cached.IsOpen, cached.EndsAt, nil
+		return cached.IsOpen, cached.EndsAt, cached.CustomDomainsOnly, nil
 	}
 
-	// Cache miss — read from DB
-	isOpen, endsAt, err = s.repo.GetSettings()
+	// Cache miss — read all three values from DB
+	isOpen, endsAt, customDomainsOnly, err = s.repo.GetSettings()
 	if err != nil {
-		return false, nil, err
+		return false, nil, false, err
 	}
 
-	// Populate cache (no TTL — only invalidated on UpdateSettings)
-	_ = s.toRedis(ctx, isOpen, endsAt)
-	return isOpen, endsAt, nil
+	// Populate cache (no TTL — only invalidated on updates)
+	_ = s.toRedis(ctx, isOpen, endsAt, customDomainsOnly)
+	return isOpen, endsAt, customDomainsOnly, nil
 }
 
 // IsVotingOpen returns true only when is_open=true AND ends_at has not passed yet (UTC).
 func (s *VotingSettingsService) IsVotingOpen(ctx context.Context) (bool, error) {
-	isOpen, endsAt, err := s.GetStatus(ctx)
+	isOpen, endsAt, _, err := s.GetStatus(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -76,22 +78,25 @@ func (s *VotingSettingsService) IsVotingOpen(ctx context.Context) (bool, error) 
 	return true, nil
 }
 
-// UpdateSettings persists new settings to MariaDB, invalidates the Redis cache,
+// GetCustomDomainsOnly returns whether only custom domains are accepted (ignoring built-in list).
+func (s *VotingSettingsService) GetCustomDomainsOnly(ctx context.Context) (bool, error) {
+	_, _, customDomainsOnly, err := s.GetStatus(ctx)
+	return customDomainsOnly, err
+}
+
+// UpdateSettings persists new is_open and ends_at to MariaDB, invalidates the Redis cache,
 // and broadcasts the updated state to all connected WebSocket clients.
-// endsAt must be in UTC (or nil to clear auto-stop).
+// endsAt must be in UTC (or nil to clear auto-stop). Does not modify custom_domains_only.
 func (s *VotingSettingsService) UpdateSettings(ctx context.Context, isOpen bool, endsAt *time.Time) error {
 	if err := s.repo.UpdateSettings(isOpen, endsAt); err != nil {
 		return err
 	}
-	// Invalidate cache so the next read pulls fresh data from DB
+	// Invalidate cache — next read will pull all fields fresh from DB
 	if err := s.redis.Del(ctx, votingSettingsRedisKey).Err(); err != nil {
 		slog.Warn("Failed to invalidate voting settings cache", "error", err)
 	}
-	// Eagerly re-populate so the very next request is fast
-	_ = s.toRedis(ctx, isOpen, endsAt)
 
 	// Broadcast new state to all connected WebSocket clients immediately.
-	// This replaces the 30-second polling that was previously on the frontend.
 	if s.hub != nil && s.candidateRepo != nil {
 		data, err := BuildWSPayload(ctx, s.candidateRepo, s)
 		if err != nil {
@@ -102,6 +107,19 @@ func (s *VotingSettingsService) UpdateSettings(ctx context.Context, isOpen bool,
 		}
 	}
 
+	return nil
+}
+
+// UpdateCustomDomainsOnly sets the custom_domains_only flag and invalidates the Redis cache.
+func (s *VotingSettingsService) UpdateCustomDomainsOnly(ctx context.Context, value bool) error {
+	if err := s.repo.UpdateCustomDomainsOnly(value); err != nil {
+		return err
+	}
+	// Invalidate cache — next read will pull all fields fresh from DB
+	if err := s.redis.Del(ctx, votingSettingsRedisKey).Err(); err != nil {
+		slog.Warn("Failed to invalidate voting settings cache after domain mode update", "error", err)
+	}
+	slog.Info("custom_domains_only updated", "value", value)
 	return nil
 }
 
@@ -119,13 +137,11 @@ func (s *VotingSettingsService) fromRedis(ctx context.Context) (*cachedSettings,
 	return &cs, nil
 }
 
-func (s *VotingSettingsService) toRedis(ctx context.Context, isOpen bool, endsAt *time.Time) error {
-	cs := cachedSettings{IsOpen: isOpen, EndsAt: endsAt}
+func (s *VotingSettingsService) toRedis(ctx context.Context, isOpen bool, endsAt *time.Time, customDomainsOnly bool) error {
+	cs := cachedSettings{IsOpen: isOpen, EndsAt: endsAt, CustomDomainsOnly: customDomainsOnly}
 	raw, err := json.Marshal(cs)
 	if err != nil {
 		return err
 	}
-	// No TTL — the cache is explicitly invalidated on every UpdateSettings call.
-	// This avoids any thundering-herd on expiry while keeping data consistent.
 	return s.redis.Set(ctx, votingSettingsRedisKey, raw, 0).Err()
 }

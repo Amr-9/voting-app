@@ -65,7 +65,7 @@ func BuildWSPayload(ctx context.Context, candidateRepo *repository.CandidateRepo
 	}
 
 	effectivelyOpen, _ := settingsSvc.IsVotingOpen(ctx)
-	_, endsAt, _ := settingsSvc.GetStatus(ctx)
+	_, endsAt, _, _ := settingsSvc.GetStatus(ctx)
 
 	payload := wsPayload{
 		Candidates: candidates,

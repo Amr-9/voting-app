@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Loader, Globe, Plus, X } from 'lucide-react'
+import { Loader, Globe, Plus, X, ShieldCheck } from 'lucide-react'
 import axios from 'axios'
-import { adminAPI } from '../../services/api.ts'
+import { adminAPI, votingAPI } from '../../services/api.ts'
 import { useToast } from '../../context/ToastContext.tsx'
 import type { CustomDomain } from '../../types/index.ts'
 
@@ -12,6 +12,10 @@ export default function EmailDomainsCard() {
   const [newDomain, setNewDomain] = useState('')
   const [domainAddLoading, setDomainAddLoading] = useState(false)
   const [domainDeleteLoadingId, setDomainDeleteLoadingId] = useState<number | null>(null)
+
+  // Custom domains only mode
+  const [customDomainsOnly, setCustomDomainsOnly] = useState(false)
+  const [modeLoading, setModeLoading] = useState(false)
 
   const fetchDomains = useCallback(async () => {
     try {
@@ -24,9 +28,28 @@ export default function EmailDomainsCard() {
     }
   }, [toast])
 
+  // Load domains and current mode on mount
   useEffect(() => {
     fetchDomains()
+    votingAPI.getStatus()
+      .then((s) => setCustomDomainsOnly(s.custom_domains_only))
+      .catch(() => {/* keep default false */})
   }, [fetchDomains])
+
+  const handleToggleMode = useCallback(async (newValue: boolean) => {
+    setModeLoading(true)
+    try {
+      await adminAPI.updateDomainMode(newValue)
+      setCustomDomainsOnly(newValue)
+      toast.success(newValue
+        ? 'Only custom domains will be accepted.'
+        : 'Built-in providers re-enabled.')
+    } catch {
+      toast.error('Failed to update domain mode.')
+    } finally {
+      setModeLoading(false)
+    }
+  }, [toast])
 
   const handleAddDomain = useCallback(async () => {
     const domain = newDomain.trim()
@@ -72,10 +95,50 @@ export default function EmailDomainsCard() {
         Allowed Email Domains
       </h2>
       <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mb-6">
-        Custom domains added here (e.g.{' '}
+        Add custom domains (e.g.{' '}
         <code className="px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-brand-600 dark:text-brand-400 text-xs font-mono">myuniversity.edu.eg</code>
-        ) will be allowed to receive OTPs, in addition to the 94 built-in providers.
+        ) to control which email addresses can vote.
       </p>
+
+      {/* ---- Domain mode toggle ---- */}
+      <div className="flex items-start gap-4 p-5 mb-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/50">
+        <div className="p-2 rounded-xl bg-brand-500/10 text-brand-500 shrink-0 mt-0.5">
+          <ShieldCheck size={18} strokeWidth={2.5} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-black text-slate-800 dark:text-slate-100 mb-1">Custom Domains Only</p>
+          {customDomainsOnly ? (
+            <p className="text-xs font-medium text-amber-600 dark:text-amber-400 leading-relaxed">
+              Voters can only use emails from the domains listed below. Gmail, Outlook, and all other built-in providers are currently blocked.
+            </p>
+          ) : (
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 leading-relaxed">
+              Voters can use Gmail, Outlook, or any of the 94 built-in providers. Enabling this will restrict voting to custom domains only.
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => !modeLoading && handleToggleMode(!customDomainsOnly)}
+          disabled={modeLoading}
+          className={`relative inline-flex h-8 w-[3.75rem] shrink-0 items-center rounded-full transition-colors duration-300 focus:outline-none focus:ring-4 disabled:opacity-60 ${
+            customDomainsOnly
+              ? 'bg-brand-500 focus:ring-brand-500/30'
+              : 'bg-slate-300 dark:bg-slate-700 focus:ring-slate-400/30'
+          }`}
+          aria-label="Toggle custom domains only mode"
+        >
+          {modeLoading ? (
+            <Loader size={14} className="animate-spin text-white absolute left-1/2 -translate-x-1/2" />
+          ) : (
+            <span
+              className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-md transition-transform duration-300 ${
+                customDomainsOnly ? 'translate-x-8' : 'translate-x-1'
+              }`}
+            />
+          )}
+        </button>
+      </div>
 
       {/* Add domain input */}
       <div className="flex gap-3 mb-6">
@@ -109,7 +172,11 @@ export default function EmailDomainsCard() {
           <Globe size={28} strokeWidth={1.5} className="opacity-50" />
           <div className="text-center">
             <p className="text-sm font-bold">No custom domains added yet</p>
-            <p className="text-xs mt-1">Only the 94 built-in email providers are currently allowed.</p>
+            <p className="text-xs mt-1">
+              {customDomainsOnly
+                ? 'Add at least one domain — currently no emails will be accepted.'
+                : 'Only the 94 built-in email providers are currently allowed.'}
+            </p>
           </div>
         </div>
       ) : (

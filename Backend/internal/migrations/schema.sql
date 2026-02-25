@@ -67,3 +67,7 @@ CREATE TABLE IF NOT EXISTS custom_email_domains (
 
 -- Index for fast domain lookups during OTP domain validation
 CREATE INDEX IF NOT EXISTS idx_custom_domain ON custom_email_domains(domain);
+
+-- Migration: add custom_domains_only flag to voting_settings (safe to re-run)
+-- When true, only custom domains are accepted; the 94 built-in providers are ignored.
+ALTER TABLE voting_settings ADD COLUMN IF NOT EXISTS custom_domains_only TINYINT(1) NOT NULL DEFAULT 0;
