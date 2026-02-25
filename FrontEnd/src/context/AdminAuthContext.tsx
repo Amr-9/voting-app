@@ -61,8 +61,13 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   )
 }
 
+const defaultAuthValue: AdminAuthContextValue = {
+  isAuthenticated: false,
+  loading: false,
+  login: async () => ({ success: false, message: 'Not in provider' }),
+  logout: async () => {},
+}
+
 export function useAdminAuth(): AdminAuthContextValue {
-  const ctx = useContext(AdminAuthContext)
-  if (!ctx) throw new Error('useAdminAuth must be inside AdminAuthProvider')
-  return ctx
+  return useContext(AdminAuthContext) ?? defaultAuthValue
 }
