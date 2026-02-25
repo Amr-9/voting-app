@@ -19,29 +19,42 @@ function PageFallback() {
   )
 }
 
+// AdminAuthProvider wraps only /admin/* routes — avoids firing /api/admin/me
+// on every public page load.
+function AdminRoutes() {
+  return (
+    <AdminAuthProvider>
+      <Suspense fallback={<PageFallback />}>
+        <Routes>
+          <Route path="login" element={<AdminLogin />} />
+          <Route
+            path="dashboard"
+            element={
+              <ProtectedRoute>
+                <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
+    </AdminAuthProvider>
+  )
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <ToastProvider>
-        <AdminAuthProvider>
-          <Toaster />
-          <Suspense fallback={<PageFallback />}>
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/admin/login" element={<AdminLogin />} />
-              <Route
-                path="/admin/dashboard"
-                element={
-                  <ProtectedRoute>
-                    <AdminDashboard />
-                  </ProtectedRoute>
-                }
-              />
-              {/* Catch-all */}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Suspense>
-        </AdminAuthProvider>
+        <Toaster />
+        <Suspense fallback={<PageFallback />}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/admin/*" element={<AdminRoutes />} />
+            {/* Catch-all */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </ToastProvider>
     </BrowserRouter>
   )

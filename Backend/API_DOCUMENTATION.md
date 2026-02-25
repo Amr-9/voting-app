@@ -16,6 +16,8 @@
    - [POST /api/vote/verify](#post-apivoteverify)
 3. [Admin Endpoints](#admin-endpoints)
    - [POST /api/admin/login](#post-apiadminlogin)
+   - [POST /api/admin/logout](#post-apiadminlogout)
+   - [GET /api/admin/me](#get-apiadminme)
    - [PUT /api/admin/change-password](#put-apiadminchange-password)
    - [POST /api/admin/candidates](#post-apiadmincandidates)
    - [PUT /api/admin/candidates/:id](#put-apiadmincandidatesid)
@@ -30,11 +32,22 @@
 ## General Information
 
 ### Authentication
-Admin endpoints are protected by **JWT (JSON Web Token)**.
-The token must be sent in the `Authorization` header:
+Admin endpoints are protected by **JWT stored in an HttpOnly cookie**.
+
+After a successful `POST /api/admin/login`, the server sets a `Set-Cookie` header automatically — the browser stores it and sends it with every subsequent request. **No manual header handling is required.**
+
 ```
-Authorization: Bearer <your_token>
+Cookie: admin_token=eyJhbGciOiJIUzI1NiIs...  ← sent automatically by the browser
 ```
+
+| Cookie attribute | Value | Purpose |
+|---|---|---|
+| `HttpOnly` | true | JavaScript cannot read it — XSS protection |
+| `Secure` | true | Sent only over HTTPS |
+| `SameSite` | None | Allows cross-domain requests (different frontend/backend domains) |
+| `Max-Age` | 86400 | Expires after 24 hours |
+
+> **Frontend requirement**: HTTP clients must be configured with `withCredentials: true` (Axios) or `credentials: 'include'` (fetch) so the browser includes the cookie in cross-origin requests.
 
 ### Response Format
 All successful responses follow this uniform structure:
@@ -229,7 +242,7 @@ Verifies the OTP and records the vote in the database. On success, the updated l
 
 ### POST /api/admin/login
 
-Authenticates an admin and returns a JWT token.
+Authenticates an admin and sets the `admin_token` HttpOnly cookie. The JWT is **never** returned in the response body — the browser receives and stores it automatically via `Set-Cookie`.
 
 #### Request Body
 ```json
@@ -247,12 +260,11 @@ Authenticates an admin and returns a JWT token.
 #### Success Response `200 OK`
 ```json
 {
-  "message": "success",
-  "data": {
-    "token": "eyJhbGciOiJIUzI1NiIs..."
-  }
+  "message": "success"
 }
 ```
+
+> The response sets: `Set-Cookie: admin_token=eyJ...; HttpOnly; Secure; SameSite=None; Max-Age=86400`
 
 #### Error Responses
 | Status Code | Error Message | Description |
@@ -262,15 +274,53 @@ Authenticates an admin and returns a JWT token.
 
 ---
 
+### POST /api/admin/logout
+
+Clears the `admin_token` cookie, ending the session. Public endpoint — no authentication required.
+
+#### Success Response `200 OK`
+```json
+{
+  "message": "success"
+}
+```
+
+> The response sets: `Set-Cookie: admin_token=; Max-Age=-1` (immediately expires the cookie)
+
+---
+
+### GET /api/admin/me
+
+Returns the identity of the currently authenticated admin, extracted from the JWT cookie. Used by the frontend on page load to verify whether a valid session exists.
+
+> **Authentication**: Required — valid `admin_token` cookie
+
+#### Success Response `200 OK`
+```json
+{
+  "message": "success",
+  "data": {
+    "id": 1,
+    "email": "admin@example.com"
+  }
+}
+```
+
+#### Error Responses
+| Status Code | Error Message | Description |
+|-------------|---------------|-------------|
+| `401` | `Authentication required` | Cookie is absent, invalid, or expired |
+
+---
+
 ### PUT /api/admin/change-password
 
-Allows an authenticated admin to change their account password. Requires a valid Bearer token.
+Allows an authenticated admin to change their account password.
 
-> **Authentication**: Required — `Authorization: Bearer <jwt_token>`
+> **Authentication**: Required — valid `admin_token` cookie
 
 #### Headers
 ```
-Authorization: Bearer <jwt_token>
 Content-Type: application/json
 ```
 
@@ -302,7 +352,7 @@ Content-Type: application/json
 |-------------|---------------|-------------|
 | `400` | `Invalid request body` | Missing or malformed fields |
 | `400` | `New password must be at least 10 characters` | New password is too short |
-| `401` | `Unauthorized` | JWT token is missing, invalid, or expired |
+| `401` | `Authentication required` | Auth cookie is absent, invalid, or expired |
 | `401` | `Current password is incorrect` | The supplied `old_password` does not match |
 | `500` | `Failed to change password` | Unexpected database error |
 
@@ -312,9 +362,10 @@ Content-Type: application/json
 
 Adds a new candidate with an optional image. This endpoint uses `multipart/form-data`.
 
+> **Authentication**: Required — valid `admin_token` cookie
+
 #### Headers
 ```
-Authorization: Bearer <jwt_token>
 Content-Type: multipart/form-data
 ```
 
@@ -340,7 +391,7 @@ Content-Type: multipart/form-data
 | Status Code | Error Message | Description |
 |-------------|---------------|-------------|
 | `400` | `name is required` | The `name` form field is missing or empty |
-| `401` | `Unauthorized` | JWT token is missing, invalid, or expired |
+| `401` | `Authentication required` | Auth cookie is absent, invalid, or expired |
 | `500` | `Failed to save image` | Could not write the uploaded image to disk |
 | `500` | `Failed to add candidate` | Database insertion failed |
 
@@ -350,9 +401,10 @@ Content-Type: multipart/form-data
 
 Updates an existing candidate's name, description, and/or image.
 
+> **Authentication**: Required — valid `admin_token` cookie
+
 #### Headers
 ```
-Authorization: Bearer <jwt_token>
 Content-Type: multipart/form-data
 ```
 
@@ -383,7 +435,7 @@ Content-Type: multipart/form-data
 |-------------|---------------|-------------|
 | `400` | `Invalid candidate ID` | ID parameter is not a valid integer ≥ 1 |
 | `400` | `name is required` | The `name` form field is missing or empty |
-| `401` | `Unauthorized` | JWT token is missing, invalid, or expired |
+| `401` | `Authentication required` | Auth cookie is absent, invalid, or expired |
 | `404` | `Candidate not found` | No candidate with the given ID exists |
 | `500` | `Failed to save image` | Could not write the image to disk |
 | `500` | `Failed to update candidate` | Database update failed |
@@ -394,10 +446,7 @@ Content-Type: multipart/form-data
 
 Permanently deletes a candidate **only if they have zero votes**. This protects election data integrity — candidates who have already received votes cannot be removed.
 
-#### Headers
-```
-Authorization: Bearer <jwt_token>
-```
+> **Authentication**: Required — valid `admin_token` cookie
 
 #### URL Parameters
 | Parameter | Type | Description |
@@ -411,7 +460,7 @@ No response body.
 | Status Code | Error Message | Description |
 |-------------|---------------|-------------|
 | `400` | `Invalid candidate ID` | ID parameter is not a valid integer ≥ 1 |
-| `401` | `Unauthorized` | JWT token is missing, invalid, or expired |
+| `401` | `Authentication required` | Auth cookie is absent, invalid, or expired |
 | `404` | `Candidate not found` | No candidate with the given ID exists |
 | `409` | `Cannot delete candidate: they already have votes` | The candidate has at least one vote and cannot be deleted |  
 | `500` | `Failed to delete candidate` | Unexpected database error |
@@ -422,9 +471,10 @@ No response body.
 
 Allows an admin to toggle voting on/off and optionally set an auto-stop datetime (UTC).
 
+> **Authentication**: Required — valid `admin_token` cookie
+
 #### Headers
 ```
-Authorization: Bearer <jwt_token>
 Content-Type: application/json
 ```
 
@@ -460,7 +510,7 @@ Content-Type: application/json
 |-------------|---------------|-------------|
 | `400` | `Invalid request body` | Malformed JSON |
 | `400` | `ends_at must be a valid RFC 3339 UTC timestamp` | Invalid datetime format |
-| `401` | `Unauthorized` | JWT token is missing, invalid, or expired |
+| `401` | `Authentication required` | Auth cookie is absent, invalid, or expired |
 | `500` | `Failed to update voting settings` | Database or Redis error |
 
 ---
@@ -529,4 +579,4 @@ Simple health check to monitor server status.
 
 ---
 
-*Last Updated: 2026-02-24*
+*Last Updated: 2026-02-25*

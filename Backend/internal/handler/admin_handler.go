@@ -3,8 +3,11 @@ package handler
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 
@@ -14,6 +17,53 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
+
+// allowedImageTypes maps detected MIME types (via magic bytes) to safe file extensions.
+// The extension is derived from the detected type — NOT from the client-supplied filename.
+var allowedImageTypes = map[string]string{
+	"image/jpeg": ".jpg",
+	"image/png":  ".png",
+	"image/gif":  ".gif",
+	"image/webp": ".webp",
+}
+
+// saveImage validates that an uploaded file is a genuine image by inspecting its magic bytes
+// (first 512 bytes), then saves it under a UUID-based filename.
+// Returns the public URL path (e.g. "/uploads/abc.jpg") or an error.
+func (h *AdminHandler) saveImage(file multipart.File) (string, error) {
+	// Read the first 512 bytes — enough for http.DetectContentType to identify any format.
+	buf := make([]byte, 512)
+	n, err := file.Read(buf)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", fmt.Errorf("failed to read file header: %w", err)
+	}
+
+	mimeType := http.DetectContentType(buf[:n])
+	ext, ok := allowedImageTypes[mimeType]
+	if !ok {
+		return "", fmt.Errorf("unsupported file type: %s", mimeType)
+	}
+
+	// Reset to the beginning so the full file is written to disk.
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", fmt.Errorf("failed to reset file reader: %w", err)
+	}
+
+	uniqueName := uuid.New().String() + ext
+	savePath := filepath.Join(h.uploadDir, uniqueName)
+
+	dst, err := os.Create(savePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to create destination file: %w", err)
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, file); err != nil {
+		return "", fmt.Errorf("failed to write image: %w", err)
+	}
+
+	return "/uploads/" + uniqueName, nil
+}
 
 // AdminHandler handles all admin-related HTTP endpoints.
 type AdminHandler struct {
@@ -137,24 +187,20 @@ func (h *AdminHandler) AddCandidate(c *gin.Context) {
 
 	imagePath := ""
 
-	// Image is optional — if provided, save it with a UUID filename
-	file, header, err := c.Request.FormFile("image")
+	// Image is optional — if provided, validate magic bytes then save with a UUID filename.
+	file, _, err := c.Request.FormFile("image")
 	if err == nil {
 		defer file.Close()
 
-		ext := filepath.Ext(header.Filename)
-		uniqueName := uuid.New().String() + ext
-		savePath := filepath.Join(h.uploadDir, uniqueName)
-
-		if err := c.SaveUploadedFile(header, savePath); err != nil {
-			slog.Error("Failed to save candidate image", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save image"})
+		path, saveErr := h.saveImage(file)
+		if saveErr != nil {
+			slog.Warn("Rejected image upload in AddCandidate", "error", saveErr)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid image: " + saveErr.Error()})
 			return
 		}
 
-		// Store the relative URL path (served via /uploads/)
-		imagePath = "/uploads/" + uniqueName
-		slog.Info("Candidate image saved", "path", savePath)
+		imagePath = path
+		slog.Info("Candidate image saved", "path", path)
 	}
 
 	id, err := h.candidateRepo.InsertCandidate(name, description, imagePath)
@@ -190,21 +236,21 @@ func (h *AdminHandler) UpdateCandidate(c *gin.Context) {
 	}
 	description := c.PostForm("description")
 
-	// Image is optional — if provided, replace the existing one
+	// Image is optional — if provided, validate magic bytes then replace the existing one.
 	imagePath := ""
-	file, header, err := c.Request.FormFile("image")
+	file, _, err := c.Request.FormFile("image")
 	if err == nil {
 		defer file.Close()
-		ext := filepath.Ext(header.Filename)
-		uniqueName := uuid.New().String() + ext
-		savePath := filepath.Join(h.uploadDir, uniqueName)
-		if err := c.SaveUploadedFile(header, savePath); err != nil {
-			slog.Error("Failed to save candidate image", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save image"})
+
+		path, saveErr := h.saveImage(file)
+		if saveErr != nil {
+			slog.Warn("Rejected image upload in UpdateCandidate", "error", saveErr)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid image: " + saveErr.Error()})
 			return
 		}
-		imagePath = "/uploads/" + uniqueName
-		slog.Info("Candidate image updated", "path", savePath)
+
+		imagePath = path
+		slog.Info("Candidate image updated", "path", path)
 	}
 
 	if err := h.candidateRepo.UpdateCandidate(candidateID, name, description, imagePath); err != nil {
