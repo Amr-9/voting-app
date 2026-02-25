@@ -20,14 +20,16 @@ type AdminHandler struct {
 	adminService  *service.AdminService
 	candidateRepo *repository.CandidateRepository
 	uploadDir     string
+	cookieSecure  bool
 }
 
 // NewAdminHandler creates a new AdminHandler.
-func NewAdminHandler(svc *service.AdminService, repo *repository.CandidateRepository, uploadDir string) *AdminHandler {
+func NewAdminHandler(svc *service.AdminService, repo *repository.CandidateRepository, uploadDir string, cookieSecure bool) *AdminHandler {
 	return &AdminHandler{
 		adminService:  svc,
 		candidateRepo: repo,
 		uploadDir:     uploadDir,
+		cookieSecure:  cookieSecure,
 	}
 }
 
@@ -52,9 +54,28 @@ func (h *AdminHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// Plant the JWT as an HttpOnly cookie — JS cannot read it (XSS protection).
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("admin_token", token, 86400, "/", "", h.cookieSecure, true)
+	c.JSON(http.StatusOK, gin.H{"message": "success"})
+}
+
+// Logout clears the admin_token cookie, effectively ending the session.
+func (h *AdminHandler) Logout(c *gin.Context) {
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("admin_token", "", -1, "/", "", h.cookieSecure, true)
+	c.JSON(http.StatusOK, gin.H{"message": "success"})
+}
+
+// Me returns the authenticated admin's identity from the JWT claims.
+// Protected by JWTAuth middleware.
+func (h *AdminHandler) Me(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "success",
-		"data":    gin.H{"token": token},
+		"data": gin.H{
+			"id":    c.MustGet("adminID"),
+			"email": c.MustGet("adminEmail"),
+		},
 	})
 }
 

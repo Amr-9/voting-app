@@ -1,7 +1,8 @@
 package config
 
 import (
-	"log"
+	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 
@@ -41,21 +42,32 @@ type Config struct {
 
 	// Rate limiting
 	RateLimitMax int
+
+	// Cookie
+	CookieSecure bool
 }
 
 // Load reads .env (if present) and returns a populated Config.
 func Load() *Config {
 	// Load .env file — ignore error if it doesn't exist (e.g. in Docker with real env vars)
 	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, reading from environment variables")
+		slog.Info("No .env file found, reading from environment variables")
 	}
 
 	smtpPort, _ := strconv.Atoi(getEnv("SMTP_PORT", "587"))
 	rateLimitMax, _ := strconv.Atoi(getEnv("RATE_LIMIT_MAX", "5"))
+	cookieSecure, _ := strconv.ParseBool(getEnv("COOKIE_SECURE", "false"))
+
+	dbDSN := fmt.Sprintf("%s:%s@tcp(%s:3306)/%s?parseTime=true&charset=utf8mb4",
+		getEnv("DB_USER"),
+		getEnv("DB_PASS"),
+		getEnv("DB_HOST"),
+		getEnv("DB_NAME"),
+	)
 
 	return &Config{
 		AppPort:              getEnv("APP_PORT", "8071"),
-		DBDSN:                getEnv("DB_DSN", "root:@tcp(localhost:3306)/voting_db?parseTime=true"),
+		DBDSN:                dbDSN,
 		RedisAddr:            getEnv("REDIS_ADDR", "localhost:6379"),
 		RedisPassword:        getEnv("REDIS_PASSWORD", ""),
 		JWTSecret:            getEnv("JWT_SECRET"),
@@ -69,6 +81,7 @@ func Load() *Config {
 		SMTPFrom:             getEnv("SMTP_FROM"),
 		TurnstileSecret:      getEnv("TURNSTILE_SECRET"),
 		RateLimitMax:         rateLimitMax,
+		CookieSecure:         cookieSecure,
 	}
 }
 

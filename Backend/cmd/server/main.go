@@ -89,7 +89,7 @@ func main() {
 	voteSvc := service.NewVoteService(voteRepo, candidateRepo, otpSvc, hub, votingSettingsSvc)
 
 	// Build handler layer
-	adminHandler := handler.NewAdminHandler(adminSvc, candidateRepo, "./uploads")
+	adminHandler := handler.NewAdminHandler(adminSvc, candidateRepo, "./uploads", cfg.CookieSecure)
 	candidateHandler := handler.NewCandidateHandler(candidateRepo)
 	voteHandler := handler.NewVoteHandler(otpSvc, voteSvc, captchaSvc, votingSettingsSvc)
 	votingSettingsHandler := handler.NewVotingSettingsHandler(votingSettingsSvc)

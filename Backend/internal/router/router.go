@@ -61,13 +61,15 @@ func Setup(
 		// Public: current voting status (open/closed + ends_at)
 		api.GET("/voting-status", votingSettingsHandler.GetVotingStatus)
 
-		// Admin login is public (it issues the token)
+		// Admin login/logout are public (login issues the cookie, logout clears it)
 		api.POST("/admin/login", adminHandler.Login)
+		api.POST("/admin/logout", adminHandler.Logout)
 
-		// Admin routes — protected by JWT middleware
+		// Admin routes — protected by JWT cookie middleware
 		admin := api.Group("/admin")
 		admin.Use(middleware.JWTAuth(jwtSecret))
 		{
+			admin.GET("/me", adminHandler.Me)
 			admin.PUT("/change-password", adminHandler.ChangePassword)
 			admin.POST("/candidates", adminHandler.AddCandidate)
 			admin.PUT("/candidates/:id", adminHandler.UpdateCandidate)

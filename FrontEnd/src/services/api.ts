@@ -5,23 +5,19 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
+  // Required so the browser sends the HttpOnly admin_token cookie automatically
+  withCredentials: true,
 })
 
-// Attach admin JWT to every request if present
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('admin_token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
+// On 401, notify the auth context so it can clear its in-memory state
+let onUnauthorized: (() => void) | null = null
+export function setUnauthorizedCallback(fn: () => void) { onUnauthorized = fn }
 
-// On 401, remove stale token (component handles redirect)
 api.interceptors.response.use(
   (response) => response,
   (error: unknown) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
-      localStorage.removeItem('admin_token')
+      onUnauthorized?.()
     }
     return Promise.reject(error)
   }
@@ -76,11 +72,17 @@ export const voteAPI = {
 }
 
 // -------------------------------------------------------
-// Admin — JWT-authenticated
+// Admin — cookie-authenticated (HttpOnly admin_token)
 // -------------------------------------------------------
 export const adminAPI = {
-  login: (email: string, password: string): Promise<{ token: string }> =>
-    api.post<{ message: string; data: { token: string } }>('/api/admin/login', { email, password })
+  login: (email: string, password: string): Promise<void> =>
+    api.post('/api/admin/login', { email, password }).then(() => {}),
+
+  logout: (): Promise<void> =>
+    api.post('/api/admin/logout').then(() => {}),
+
+  me: (): Promise<{ id: number; email: string }> =>
+    api.get<{ message: string; data: { id: number; email: string } }>('/api/admin/me')
       .then((res) => res.data.data),
 
   addCandidate: (name: string, description: string, imageFile: File | null) => {

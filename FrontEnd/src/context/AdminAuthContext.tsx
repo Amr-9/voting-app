@@ -1,53 +1,58 @@
-import { createContext, useContext, useState, useCallback, useMemo } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react'
 import type { ReactNode } from 'react'
-import { adminAPI } from '../services/api.ts'
+import { adminAPI, setUnauthorizedCallback } from '../services/api.ts'
 
 interface AdminAuthContextValue {
-  token: string | null
   isAuthenticated: boolean
   loading: boolean
   login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>
-  logout: () => void
+  logout: () => Promise<void>
 }
 
 const AdminAuthContext = createContext<AdminAuthContextValue | null>(null)
 
-const TOKEN_KEY = 'admin_token'
-
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
-  // Synchronous init — no flash on ProtectedRoute
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY))
-  const [loading, setLoading] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  // loading stays true until the initial /me check completes (prevents flash on ProtectedRoute)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    // Register callback: if any request gets a 401 mid-session, clear auth state
+    setUnauthorizedCallback(() => setIsAuthenticated(false))
+
+    // Verify whether a valid cookie already exists (e.g. after page refresh)
+    adminAPI.me()
+      .then(() => setIsAuthenticated(true))
+      .catch(() => setIsAuthenticated(false))
+      .finally(() => setLoading(false))
+
+    return () => setUnauthorizedCallback(() => {})
+  }, [])
 
   const login = useCallback(async (email: string, password: string) => {
-    setLoading(true)
     try {
-      const data = await adminAPI.login(email, password)
-      localStorage.setItem(TOKEN_KEY, data.token)
-      setToken(data.token)
+      await adminAPI.login(email, password)
+      setIsAuthenticated(true)
       return { success: true }
     } catch (err: unknown) {
       const message =
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error
         ?? 'Login failed'
       return { success: false, message }
-    } finally {
-      setLoading(false)
     }
   }, [])
 
-  const logout = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY)
-    setToken(null)
+  const logout = useCallback(async () => {
+    await adminAPI.logout().catch(() => {})
+    setIsAuthenticated(false)
   }, [])
 
   const value = useMemo(() => ({
-    token,
-    isAuthenticated: !!token,
+    isAuthenticated,
     loading,
     login,
     logout,
-  }), [token, loading, login, logout])
+  }), [isAuthenticated, loading, login, logout])
 
   return (
     <AdminAuthContext.Provider value={value}>
