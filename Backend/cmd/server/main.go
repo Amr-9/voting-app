@@ -101,7 +101,7 @@ func main() {
 	votingSettingsHandler := handler.NewVotingSettingsHandler(votingSettingsSvc)
 
 	// Ensure uploads directory exists
-	if err := os.MkdirAll("./uploads", 0755); err != nil {
+	if err := os.MkdirAll("./uploads", 0750); err != nil {
 		slog.Error("Failed to create uploads directory", "error", err)
 		os.Exit(1)
 	}

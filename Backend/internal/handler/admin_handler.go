@@ -53,6 +53,21 @@ func (h *AdminHandler) saveImage(file multipart.File) (string, error) {
 	uniqueName := uuid.New().String() + ext
 	savePath := filepath.Join(h.uploadDir, uniqueName)
 
+	// Defense-in-depth: confirm the resolved path stays inside the upload directory.
+	// uniqueName is server-generated (UUID + whitelisted extension) so this will never
+	// fail in practice — but an explicit check guards against future refactoring mistakes.
+	absUploadDir, err := filepath.Abs(h.uploadDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve upload directory: %w", err)
+	}
+	absSavePath, err := filepath.Abs(savePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve save path: %w", err)
+	}
+	if !strings.HasPrefix(absSavePath, absUploadDir+string(filepath.Separator)) {
+		return "", fmt.Errorf("security: save path escapes upload directory")
+	}
+
 	dst, err := os.Create(savePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to create destination file: %w", err)
@@ -163,7 +178,7 @@ func (h *AdminHandler) ChangePassword(c *gin.Context) {
 		case errors.Is(err, service.ErrIncorrectPassword):
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Current password is incorrect"})
 		case errors.Is(err, service.ErrWeakPassword):
-			c.JSON(http.StatusBadRequest, gin.H{"error": "New password must be at least 8 characters"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "New password must be at least 10 characters"})
 		default:
 			slog.Error("ChangePassword failed", "adminID", adminID, "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to change password"})

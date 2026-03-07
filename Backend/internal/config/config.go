@@ -42,7 +42,6 @@ type Config struct {
 
 	// Rate limiting
 	RateLimitMax int
-
 }
 
 // Load reads .env (if present) and returns a populated Config.
